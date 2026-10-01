@@ -1,8 +1,11 @@
 """
 Fenêtre principale.
 
-Onglet unique pour l'instant : presets, tuner, batterie/EQ, loop station PC,
-setlist. Passera à une navigation par onglets si ça devient trop chargé.
+Deux onglets : "Dashboard" (positionnement libre des modules, cf
+ui/dashboard_interface.py) est la vue principale désormais. "Classique"
+garde l'ancien affichage empilé tel quel, comme vue de secours/référence —
+pas de conflit entre les deux : ce sont des instances de panneaux séparées
+mais branchées sur les mêmes AmpState/MidiSender, donc toujours synchronisées.
 """
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea
@@ -15,14 +18,13 @@ from ui.tuner_panel import TunerPanel
 from ui.drum_panel import DrumPanel
 from ui.loop_panel import LoopPanel
 from ui.setlist_panel import SetlistPanel
+from ui.dashboard_interface import DashboardInterface
 
 
 class HomeInterface(QScrollArea):
-    """Onglet unique pour l'instant — deviendra le premier de plusieurs.
-
-    Passé en QScrollArea : avec 5 panneaux (dont batterie/EQ et loop station
-    qui ont pas mal de contrôles chacun), le contenu dépasse largement la
-    hauteur de la fenêtre.
+    """Vue de secours/référence — l'ancien affichage empilé, conservé tel
+    quel. Les panneaux sont des instances séparées de celles du Dashboard,
+    mais pointent vers les mêmes AmpState/MidiSender donc restent synchro.
     """
 
     def __init__(self, state: AmpState, sender: MidiSender, parent=None):
@@ -65,14 +67,19 @@ class MainWindow(FluentWindow):
     def __init__(self, state: AmpState, sender: MidiSender):
         super().__init__()
         self.setWindowTitle("Mighty Control")
-        self.resize(900, 700)
+        self.resize(1150, 900)
+
+        # Ajouté en premier : c'est la vue par défaut à l'ouverture
+        self.dashboard_interface = DashboardInterface(state, sender)
+        self.addSubInterface(self.dashboard_interface, FluentIcon.LAYOUT, "Dashboard")
 
         self.home_interface = HomeInterface(state, sender)
-        self.addSubInterface(self.home_interface, FluentIcon.HOME, "Accueil")
+        self.addSubInterface(self.home_interface, FluentIcon.VIEW, "Classique")
 
     def closeEvent(self, event):
-        # Coupe proprement le flux audio de la loop station (sinon PortAudio
-        # peut rester accroché) et désenregistre les touches globales
+        # Coupe proprement les flux audio des DEUX vues (instances séparées,
+        # chacune la sienne) et désenregistre les touches globales
         self.home_interface.loop_panel.stop()
         self.home_interface.setlist_panel.stop()
+        self.dashboard_interface.stop()
         super().closeEvent(event)

@@ -52,6 +52,24 @@ TUNER_MODES = [
 ]
 
 
+def load_tuner_offset() -> int:
+    """Partagé avec ui/dashboard/compact/tuner_compact.py : les deux vues
+    doivent rester calibrées pareil, un seul fichier, un seul point de lecture."""
+    if CALIBRATION_FILE.exists():
+        try:
+            raw = json.loads(CALIBRATION_FILE.read_text(encoding="utf-8"))
+            return int(raw.get("cent_zero_offset", DEFAULT_CENT_ZERO))
+        except (json.JSONDecodeError, ValueError):
+            return DEFAULT_CENT_ZERO
+    return DEFAULT_CENT_ZERO
+
+
+def save_tuner_offset(offset: int):
+    CALIBRATION_FILE.write_text(
+        json.dumps({"cent_zero_offset": offset}), encoding="utf-8"
+    )
+
+
 class CentsGauge(QWidget):
     """Jauge horizontale minimale : aiguille centrée, verte dans la tolérance.
 
@@ -208,15 +226,7 @@ class TunerPanel(HeaderCardWidget):
     # --- Persistance du décalage de calibration ---
 
     def _load_offset(self) -> int:
-        if CALIBRATION_FILE.exists():
-            try:
-                raw = json.loads(CALIBRATION_FILE.read_text(encoding="utf-8"))
-                return int(raw.get("cent_zero_offset", DEFAULT_CENT_ZERO))
-            except (json.JSONDecodeError, ValueError):
-                return DEFAULT_CENT_ZERO
-        return DEFAULT_CENT_ZERO
+        return load_tuner_offset()
 
     def _save_offset(self):
-        CALIBRATION_FILE.write_text(
-            json.dumps({"cent_zero_offset": self._cent_offset}), encoding="utf-8"
-        )
+        save_tuner_offset(self._cent_offset)
