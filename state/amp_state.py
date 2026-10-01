@@ -27,6 +27,7 @@ class AmpState(QObject):
     preset_changed = Signal(int)
     tuner_updated = Signal()       # note/cent/enabled/requested ont changé, relire les attributs
     drum_updated = Signal()        # idem pour les réglages batterie
+    connection_changed = Signal(bool)  # True when device connected, False when disconnected
 
     def __init__(self):
         super().__init__()
@@ -146,3 +147,13 @@ class AmpState(QObject):
         self.drum_treble = treble
         self.drum_updated.emit()
         self._persist()
+
+    def set_connected(self, connected: bool):
+        """Set connection state and emit signal.
+
+        Called by ConnectionMonitor when device presence changes.
+        This is the single source of truth for connection state.
+        """
+        if self.connected != connected:
+            self.connected = connected
+            self.connection_changed.emit(connected)
