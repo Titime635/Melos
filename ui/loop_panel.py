@@ -53,10 +53,12 @@ class LoopPanel(HeaderCardWidget):
         self._output_devices: list[tuple[int, str]] = []
         self._loop_seconds = 0.0
         self._audio_ok = True
+        self._reconnect_attempting = False  # Flag to prevent concurrent reconnection attempts
 
-        # Timer pour tenter de reconnecter l'audio en cas de déconnexion
+        # Timer pour tenter de reconnecter l'audio en cas de déconnexion (single-shot)
         self._reconnect_timer = QTimer()
-        self._reconnect_timer.setInterval(3000)  # Essaier toutes les 3 secondes
+        self._reconnect_timer.setInterval(3000)  # Attendre 3 secondes avant de tenter
+        self._reconnect_timer.setSingleShot(True)
         self._reconnect_timer.timeout.connect(self._try_reconnect_audio)
 
         self._build_ui()
@@ -262,6 +264,7 @@ class LoopPanel(HeaderCardWidget):
 
     def _on_device_changed(self, _index: int):
         self._reconnect_timer.stop()  # Arrêter les tentatives de reconnexion automatique
+        self._reconnect_attempting = False  # Réinitialiser le flag de reconnexion
         self._start_engine()
         if self._audio_ok:
             self._on_state_changed(self._engine.state)
@@ -341,8 +344,8 @@ class LoopPanel(HeaderCardWidget):
         self._status_label.setText(f"Pas d'audio : {message}")
         for btn in (self._record_btn, self._overdub_btn, self._play_btn, self._clear_btn):
             btn.setEnabled(False)
-        # Démarrer le timer de reconnexion en cas d'erreur de flux audio
-        if not self._reconnect_timer.isActive():
+        # Démarrer le timer de reconnexion en cas d'erreur de flux audio (single-shot)
+        if not self._reconnect_attempting and not self._reconnect_timer.isActive():
             self._reconnect_timer.start()
 
     def _refresh_tracks(self):
@@ -374,28 +377,38 @@ class LoopPanel(HeaderCardWidget):
     def stop(self):
         self._engine.stop_stream()
         self._reconnect_timer.stop()
+        self._reconnect_attempting = False
 
     def _try_reconnect_audio(self):
         """Tente de reconnecter le flux audio si les dispositifs sont disponibles."""
-        # Ne rien faire si l'audio est déjà OK ou si nous sommes en train de traiter une erreur
-        if self._audio_ok:
-            self._reconnect_timer.stop()
-            return
+        # Marquer que nous sommes en train de tenter une reconnexion
+        self._reconnect_attempting = True
 
-        # Vérifier si les dispositifs audio sélectionnés sont disponibles
-        input_device = self._selected_device(self._input_combo, self._input_devices)
-        output_device = self._selected_device(self._output_combo, self._output_devices)
+        try:
+            # Ne rien faire si l'audio est déjà OK
+            if self._audio_ok:
+                return
 
-        if input_device is not None and output_device is not None:
-            # Essayer de redémarrer le moteur
-            try:
-                self._engine.start(input_device=input_device, output_device=output_device)
-                self._audio_ok = True
-                self._reconnect_timer.stop()
-                self._on_state_changed(self._engine.state)  # Mettre à jour l'interface
-                # Réactiver les boutons de transport
-                for btn in (self._record_btn, self._overdub_btn, self._play_btn, self._clear_btn):
-                    btn.setEnabled(True)
-            except Exception:
-                # La reconnexion a échoué, on continuera à essayer
+            # Vérifier si les dispositifs audio sélectionnés sont disponibles
+            input_device = self._selected_device(self._input_combo, self._input_devices)
+            output_device = self._selected_device(self._output_combo, self._output_devices)
+
+            if input_device is not None and output_device is not None:
+                # Essayer de redémarrer le moteur
+                try:
+                    self._engine.start(input_device=input_device, output_device=output_device)
+                    self._audio_ok = True
+                    self._on_state_changed(self._engine.state)  # Mettre à jour l'interface
+                    # Réactiver les boutons de transport
+                    for btn in (self._record_btn, self._overdub_btn, self._play_btn, self._clear_btn):
+                        btn.setEnabled(True)
+                except Exception:
+                    # La reconnexion a échoué, on réessayera plus tard si l'erreur persiste
+                    pass
+            else:
+                # Dispositifs pas disponibles, on réessayera plus tard
                 pass
+        finally:
+            # Réinitialiser le flag et préparer le timer pour une prochaine tentative si nécessaire
+            self._reconnect_attempting = False
+            # Note: Le timer est en mode single-shot, il faudra le redémarrer manuellement si nécessaire
