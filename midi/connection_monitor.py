@@ -107,9 +107,17 @@ class ConnectionMonitor(QThread):
 
     def _sync_state_to_device(self):
         """Envoie l'état actuel de AmpState vers le device."""
-        # Cette fonction sera appelée depuis main.py pour éviter les dépendances circulaires
-        # Elle sera remplacée par une référence à une fonction utilitaire
-        pass  # À implémenter dans main.py ou dans un module utilitaire
+        from midi.protocol import TUNER_REF_PITCH_440HZ
+        sender = self._sender
+        state = self._state
+
+        # Renvoie au device les réglages actuels (même fonction qu'au lancement)
+        sender.set_preset(state.current_preset)
+        sender.drum_enable(state.drum_enabled)
+        sender.drum_set_style(state.drum_style)
+        sender.drum_set_level(state.drum_level)
+        sender.drum_set_eq(state.drum_bass, state.drum_middle, state.drum_treble)
+        sender.tuner_enable(on=state.tuner_requested, mode=state.tuner_mode, ref_pitch=TUNER_REF_PITCH_440HZ)
 
     def stop(self):
         """Arrête le moniteur proprement."""
