@@ -22,21 +22,30 @@ class MidiListener(QThread):
     drum_cc_received = Signal(int, int)            # (control, value) brut, à trier côté state
     connection_lost = Signal()
 
-    def __init__(self, input_port_name: str):
+    def __init__(self, input_port_name: str = None):
         super().__init__()
-        self._input_port_name = input_port_name
+        # If input_port_name is None, use default from protocol
+        self._input_port_name = input_port_name if input_port_name is not None else protocol.INPUT_NAME
         self._running = False
 
     def run(self):
         self._running = True
-        try:
-            with mido.open_input(self._input_port_name) as inport:
-                while self._running:
-                    for msg in inport.iter_pending():
-                        self._dispatch(msg)
-                    self.msleep(5)  # évite de saturer le CPU
-        except (IOError, OSError):
-            self.connection_lost.emit()
+        while self._running:
+            try:
+                with mido.open_input(self._input_port_name) as inport:
+                    # Successfully opened port, now listen for messages
+                    while self._running:
+                        for msg in inport.iter_pending():
+                            self._dispatch(msg)
+                        self.msleep(5)  # évite de saturer le CPU
+                # If we exit the inner while loop normally (without exception),
+                # it means _running was set to False
+                break
+            except (IOError, OSError):
+                # Port not available or disconnected
+                self.connection_lost.emit()
+                # Wait before retrying to avoid excessive CPU usage
+                self.msleep(1000)  # 1 second delay before retry
 
     def _dispatch(self, msg: mido.Message):
         if msg.type == "program_change":
