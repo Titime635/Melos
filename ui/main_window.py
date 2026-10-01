@@ -9,7 +9,7 @@ mais branchées sur les mêmes AmpState/MidiSender, donc toujours synchronisées
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QHBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QHBoxLayout, QFrame
 from qfluentwidgets import FluentWindow, FluentIcon, InfoBar, InfoBarPosition
 
 from state.amp_state import AmpState
@@ -95,13 +95,16 @@ class MainWindow(FluentWindow):
         # Pour cette version, nous allons:
         # 1. Utiliser InfoBar pour la bannière d'avertissement persistante (déconnecté)
         # 2. Utiliser InfoBar pour la confirmation brève "Connecté"
-        # 3. Ajouter un indicateur permanent simple dans le coin inférieur droit de la fenêtre principale
+        # 3. Ajouter un indicateur permanent simple dans le coin supérieur droit de la barre de titre
 
-        # Créer un container pour l'indicateur en bas à droite
-        from PySide6.QtWidgets import QStatusBar
-        status_bar = QStatusBar()
-        status_bar.addPermanentWidget(self._connection_indicator)
-        self.setStatusBar(status_bar)
+        # Essayer d'ajouter l'indicateur à la barre de titre si disponible
+        if hasattr(self, 'titleBar') and hasattr(self.titleBar, 'hBoxLayout'):
+            self.titleBar.hBoxLayout.addWidget(self._connection_indicator, 0, Qt.AlignmentFlag.AlignRight)
+        elif hasattr(self, 'titleBar'):
+            # Méthode alternative pour certaines versions de qfluentwidgets
+            self.titleBar.addWidget(self._connection_indicator)
+        # Si aucune des méthodes ci-dessus ne fonctionne, l'indicateur ne sera pas affiché
+        # mais les InfoBars fonctionneront toujours pour indiquer l'état de connexion
 
         # Surveillance de l'état de connexion
         state.connection_changed.connect(self._on_connection_state_changed)
