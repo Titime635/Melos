@@ -16,7 +16,7 @@ erreur pendant qu'on scrolle la page.
 """
 
 import sounddevice as sd
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QFrame
 from qfluentwidgets import HeaderCardWidget, PushButton, BodyLabel, SwitchButton, TransparentToolButton, FluentIcon
 
@@ -53,6 +53,11 @@ class LoopPanel(HeaderCardWidget):
         self._output_devices: list[tuple[int, str]] = []
         self._loop_seconds = 0.0
         self._audio_ok = True
+
+        # Timer pour tenter de reconnecter l'audio en cas de déconnexion
+        self._reconnect_timer = QTimer()
+        self._reconnect_timer.setInterval(3000)  # Essaier toutes les 3 secondes
+        self._reconnect_timer.timeout.connect(self._try_reconnect_audio)
 
         self._build_ui()
         self._populate_devices()
@@ -256,6 +261,7 @@ class LoopPanel(HeaderCardWidget):
     # --- Actions utilisateur : réglages ---
 
     def _on_device_changed(self, _index: int):
+        self._reconnect_timer.stop()  # Arrêter les tentatives de reconnexion automatique
         self._start_engine()
         if self._audio_ok:
             self._on_state_changed(self._engine.state)
@@ -335,6 +341,9 @@ class LoopPanel(HeaderCardWidget):
         self._status_label.setText(f"Pas d'audio : {message}")
         for btn in (self._record_btn, self._overdub_btn, self._play_btn, self._clear_btn):
             btn.setEnabled(False)
+        # Démarrer le timer de reconnexion en cas d'erreur de flux audio
+        if not self._reconnect_timer.isActive():
+            self._reconnect_timer.start()
 
     def _refresh_tracks(self):
         while self._tracks_layout.count():
@@ -364,3 +373,29 @@ class LoopPanel(HeaderCardWidget):
 
     def stop(self):
         self._engine.stop_stream()
+        self._reconnect_timer.stop()
+
+    def _try_reconnect_audio(self):
+        """Tente de reconnecter le flux audio si les dispositifs sont disponibles."""
+        # Ne rien faire si l'audio est déjà OK ou si nous sommes en train de traiter une erreur
+        if self._audio_ok:
+            self._reconnect_timer.stop()
+            return
+
+        # Vérifier si les dispositifs audio sélectionnés sont disponibles
+        input_device = self._selected_device(self._input_combo, self._input_devices)
+        output_device = self._selected_device(self._output_combo, self._output_devices)
+
+        if input_device is not None and output_device is not None:
+            # Essayer de redémarrer le moteur
+            try:
+                self._engine.start(input_device=input_device, output_device=output_device)
+                self._audio_ok = True
+                self._reconnect_timer.stop()
+                self._on_state_changed(self._engine.state)  # Mettre à jour l'interface
+                # Réactiver les boutons de transport
+                for btn in (self._record_btn, self._overdub_btn, self._play_btn, self._clear_btn):
+                    btn.setEnabled(True)
+            except Exception:
+                # La reconnexion a échoué, on continuera à essayer
+                pass
