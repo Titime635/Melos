@@ -1,0 +1,29 @@
+Modifiés / ajoutés :
+README.md
+audio/loop_engine.py
+docs/protocol_notes.md
+main.py
+midi/connection_monitor.py
+midi/listener.py
+midi/protocol.py
+midi/sender.py
+midi/sync.py
+settings.py
+shortcuts/__init__.py
+shortcuts/actions.py
+shortcuts/backend.py
+shortcuts/manager.py
+shortcuts/router.py
+state/amp_state.py
+tests/fake_keyboard.py
+tests/test_audio.py
+tests/test_connection.py
+tests/test_shortcuts.py
+ui/dashboard_interface.py
+ui/loop_panel.py
+ui/main_window.py
+ui/setlist_panel.py
+ui/shortcuts_interface.py
+
+À supprimer (git rm) :
+setlist/hotkeys.py
