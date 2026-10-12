@@ -13,10 +13,7 @@ replié ou supprimé (bouton "+" pour le rajouter ensuite), et le CONTENU de
 chaque module est désactivé (cf dock_widget.py) — on réarrange, on ne
 touche pas aux réglages.
 
-Les panneaux ici sont pour l'instant un mélange : le tuner utilise sa
-version compacte dédiée au dashboard (cf ui/dashboard/compact/), les autres
-utilisent encore leurs versions complètes en attendant leur tour d'être
-retravaillées (cf discussion — un module à la fois). Toutes sont des
+Les panneaux sont les mêmes que dans l'onglet Classique (modules adaptatifs à leur taille). Ce sont des
 instances SÉPARÉES de celles de l'onglet Classique, mais pointent vers les
 mêmes AmpState/MidiSender : les deux vues restent synchronisées
 automatiquement. LoopPanel et SetlistPanel ont chacun leur propre flux
@@ -28,41 +25,45 @@ panneaux), pas encore sauvegardable entre deux lancements (workspaces,
 phase 3).
 """
 
-from PySide6.QtCore import Qt
+import logging
+
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 from qfluentwidgets import SegmentedWidget, TransparentDropDownToolButton, RoundMenu, Action, FluentIcon
 
+from settings import load_settings, update_settings
 from state.amp_state import AmpState
 from midi.protocol import PORT_KEYWORD
 from midi.sender import MidiSender
+from ui.module_card import MODULE_COLORS
 from ui.preset_panel import PresetPanel
-from ui.dashboard.compact.tuner_compact import CompactTunerPanel
+from ui.tuner_panel import TunerPanel
 from ui.drum_panel import DrumPanel
 from ui.loop_panel import LoopPanel
+from ui.tempo_panel import TempoPanel
 from ui.setlist_panel import SetlistPanel
 from ui.dashboard.dock_area import DashboardDockArea
 
 # Couleur d'identité de chaque module (même palette que les couleurs de
 # preset, pour rester cohérent visuellement dans toute l'appli)
-ACCENT_COLORS = {
-    "presets": "#61D149",
-    "tuner": "#46D1E6",
-    "drums": "#E98D32",
-    "loop": "#DF74D6",
-    "setlist": "#2C75EE",
-}
+ACCENT_COLORS = MODULE_COLORS
+
+log = logging.getLogger("melos.dashboard")
 
 TITLES = {
     "presets": "Presets",
     "tuner": "Tuner",
     "drums": "Batterie",
     "loop": "Loop station",
+    "tempo": "Tempo",
     "setlist": "Setlist",
 }
 
 
 class DashboardInterface(QWidget):
-    def __init__(self, state: AmpState, sender: MidiSender, parent=None):
+    layout_edited = Signal(object, object)   # (agencement avant, agencement après) — cf state/undo.py
+
+    def __init__(self, state: AmpState, sender: MidiSender, loop_engine=None, audio=None, parent=None):
         super().__init__(parent)
         self.setObjectName("DashboardInterface")
 
@@ -90,14 +91,21 @@ class DashboardInterface(QWidget):
         self._dock_area.modules_hidden_changed.connect(self._refresh_add_menu)
         layout.addWidget(self._dock_area, stretch=1)
 
-        # Instances séparées de celles de l'onglet Classique (cf docstring du module)
-        self._loop_panel = LoopPanel()
+        # Instances séparées de celles de l'onglet Classique (cf docstring du module), sauf le moteur
+        # de la loop station, partagé (`loop_engine`) : un seul flux audio, un seul clic.
+        self._loop_panel = LoopPanel(state.transport, loop_engine, audio)
+        self._drum_panel = DrumPanel(state, sender)
+        self._drum_panel.set_sync(self._loop_panel)  # batterie calée sur la mesure du looper
+        self._tempo_panel = TempoPanel(state.transport)
+        self._tempo_panel.attach_loop_panel(self._loop_panel)
         self._setlist_panel = SetlistPanel(state, sender)
+        self._preset_panel = PresetPanel(state, sender)
         panels = {
-            "presets": PresetPanel(state, sender),
-            "tuner": CompactTunerPanel(state, sender),  # premier module retravaillé pour le dashboard
-            "drums": DrumPanel(state, sender),
+            "presets": self._preset_panel,
+            "tuner": TunerPanel(state, sender),
+            "drums": self._drum_panel,
             "loop": self._loop_panel,
+            "tempo": self._tempo_panel,
             "setlist": self._setlist_panel,
         }
 
@@ -111,6 +119,7 @@ class DashboardInterface(QWidget):
         )
 
         self._build_default_layout()
+        self._restore_layout()
         self._refresh_add_menu()
 
         self._mode_switcher.setCurrentItem("performance")
@@ -118,23 +127,77 @@ class DashboardInterface(QWidget):
 
     def _build_default_layout(self):
         """Deux colonnes : presets/tuner/batterie à gauche (empilés),
-        loop station/setlist à droite (plus larges, empilés aussi) — mesuré
-        sur les tailles réelles des panneaux. Le tuner compact est bien plus
-        petit que les autres (113x58 mesuré) : les proportions verticales de
-        la colonne de gauche en tiennent compte."""
+        loop station/tempo/setlist à droite (plus larges, empilés aussi) — mesuré
+        sur les tailles réelles des panneaux."""
         d = self._dock_area
         d.split("presets", "loop", Qt.Horizontal)
         d.split("presets", "tuner", Qt.Vertical)
         d.split("tuner", "drums", Qt.Vertical)
-        d.split("loop", "setlist", Qt.Vertical)
+        d.split("loop", "tempo", Qt.Vertical)
+        d.split("tempo", "setlist", Qt.Vertical)
 
         d.resize_docks(["presets", "loop"], [404, 682], Qt.Horizontal)
-        d.resize_docks(["presets", "tuner", "drums"], [258, 58, 288], Qt.Vertical)
-        d.resize_docks(["loop", "setlist"], [387, 378], Qt.Vertical)
+        d.resize_docks(["presets", "tuner", "drums"], [160, 320, 220], Qt.Vertical)
+        d.resize_docks(["loop", "tempo", "setlist"], [320, 270, 230], Qt.Vertical)
+        self._default_layout = d.layout_snapshot()   # pour « Réinitialiser le Dashboard » (page Réglages)
 
     def _set_mode(self, edit: bool):
         self._dock_area.set_edit_mode(edit)
         self._add_btn.setVisible(edit)
+        if not edit and hasattr(self, "_saved_layout"):
+            self.save_layout()   # fin de l'édition : l'agencement choisi est enregistré
+
+    # --- Agencement sauvegardé (app_settings.json, section "dashboard") ---
+
+    def _restore_layout(self):
+        cfg = load_settings()["dashboard"]
+        if self._dock_area.restore_layout(cfg.get("state"), list(cfg.get("hidden") or [])):
+            log.info("agencement du Dashboard restauré")
+        self._saved_layout = self._dock_area.layout_snapshot()
+        # Les tailles se règlent aussi à la souris en mode Performance, et les modules supprimés / rajoutés
+        # changent l'agencement : on regarde régulièrement s'il a bougé plutôt que de brancher chaque cas.
+        self._layout_timer = QTimer(self)
+        self._layout_timer.setInterval(400)
+        self._layout_timer.timeout.connect(self.save_layout)
+        self._layout_timer.start()
+
+    def save_layout(self):
+        snapshot = self._dock_area.layout_snapshot()
+        size = self._dock_area.size()
+        resized, self._last_size = size != getattr(self, "_last_size", size), size
+        if snapshot == self._saved_layout:
+            return
+        previous, self._saved_layout = self._saved_layout, snapshot
+        update_settings({"dashboard": {"state": snapshot[0], "hidden": snapshot[1]}})
+        if not resized:   # redimensionner la fenêtre déplace les séparateurs : ce n'est pas une édition
+            self.layout_edited.emit(previous, snapshot)
+
+    def apply_layout(self, layout):
+        """Remet un agencement (annuler / rétablir) et l'enregistre, sans le signaler comme une modification."""
+        self._dock_area.apply_layout(layout[0], list(layout[1]))
+        self._saved_layout = self._dock_area.layout_snapshot()
+        update_settings({"dashboard": {"state": self._saved_layout[0], "hidden": self._saved_layout[1]}})
+
+    def reset_layout(self):
+        """Remet l'agencement d'origine (page Réglages). Annulable avec Ctrl+Z sur le Dashboard."""
+        before = self._saved_layout
+        self.apply_layout(self._default_layout)
+        if before != self._saved_layout:
+            self.layout_edited.emit(before, self._saved_layout)
+
+    def reload_from_settings(self):
+        """Après un import / une réinitialisation complète : relit l'agencement enregistré."""
+        cfg = load_settings()["dashboard"]
+        if cfg.get("state"):
+            self._dock_area.apply_layout(cfg["state"], list(cfg.get("hidden") or []))
+        else:
+            self._dock_area.apply_layout(*self._default_layout)
+        self._saved_layout = self._dock_area.layout_snapshot()
+        update_settings({"dashboard": {"state": self._saved_layout[0], "hidden": self._saved_layout[1]}})
+
+    @property
+    def preset_panel(self) -> PresetPanel:
+        return self._preset_panel
 
     def _refresh_add_menu(self):
         self._add_menu.clear()
@@ -152,8 +215,13 @@ class DashboardInterface(QWidget):
         return self._loop_panel
 
     @property
+    def drum_panel(self) -> DrumPanel:
+        return self._drum_panel
+
+    @property
     def setlist_panel(self) -> SetlistPanel:
         return self._setlist_panel
 
     def stop(self):
+        self.save_layout()
         self._loop_panel.stop()

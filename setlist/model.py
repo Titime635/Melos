@@ -12,7 +12,7 @@ import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
-SETLISTS_FILE = Path(__file__).resolve().parent.parent / "setlists.json"
+from paths import SETLISTS_FILE
 
 
 @dataclass

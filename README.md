@@ -63,11 +63,21 @@ mighty_control/
 
 ## Keyboard shortcuts
 
-- Global (work while another window has focus) with an on/off switch, in the navigation bar and on the **Raccourcis** page. **No default keys**: you pick them on that page (Échap cancels a capture; a key already used by another action is refused).
+- Three modes: **Désactivés** (nothing is listened to), **Fenêtre active** (only while the app is in the foreground) and **Global** (also while another window has focus). Pick it on the **Touches** page or cycle it with the switch icon at the bottom of the navigation bar (green = global, blue = window, grey = off). **No default keys**: you pick them on the Touches page (Échap cancels a capture; a key already used by another action is refused).
+- A bound key is reserved for the app while shortcuts are on: it no longer also presses the focused button (Space used to "click" the title-bar minimise button). While you type in a text field the key goes to the field instead and the shortcut does not fire.
 - Actions: presets 1–7, next/previous, and the loop station — one cyclic key (record → play → overdub) **and** separate keys (record, overdub, play/stop, clear). Clear only fires when its key is **held ~1 s**.
 - Next/previous follow the setlist when it is active (switch on + a sequence with steps), otherwise they step through the presets (wrapping).
 - Shortcuts drive the view you are looking at (Dashboard or Classique have separate loop stations and setlists); on the Raccourcis page they keep driving the last one visited.
-- A single bare letter/digit/Space/Enter fires everywhere while the switch is on — the page warns about it; prefer F-keys or a Ctrl/Alt combination.
+- In Global mode a single bare letter/digit/Space/Enter fires in every other application too — the page warns about it; prefer F-keys or a Ctrl/Alt combination.
+
+## Sound levels
+
+- The loop station plays through the Mighty's USB sound card, so its level used to be *Windows volume × the app slider*, while the drums (inside the amp) only depend on their own slider. On Windows the app now sets the Mighty's output volume to 100 % (and unmutes it) when the audio stream starts, so the slider is the only setting; set the final level with the amp's volume knob. Needs `pycaw` (in `requirements.txt`, Windows only). Turn it off with `"force_system_volume": false` in the `loop` section of `app_settings.json`.
+- The drum volume slider is 0–100 % mapped on the usable range of the amp's level control (`DRUM_LEVEL_CC_CAP` / `DRUM_LEVEL_GAMMA` in `midi/protocol.py`: raise the cap if 100 % is too quiet).
+
+## Diagnostics
+
+- `melos_debug.log` records connection changes, shortcuts and preset changes; `melos_crash.log` receives the stack of every thread if the UI is frozen for more than 10 s (or on a native crash). Send these two files when something hangs. Both are git-ignored (`*.log`).
 
 ## Known protocol quirks
 

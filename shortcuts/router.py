@@ -9,7 +9,9 @@ tard pédalier Arduino ou Jarvis) et le traduit en appels sur l'appli :
   - suivant / précédent : "fusionnés" — ils suivent la setlist si elle est
     active (interrupteur sur ON ET une séquence avec des étapes), sinon ils
     font défiler les presets (en boucle, comme la setlist) ;
-  - loop station : délégué au LoopPanel de la vue pilotée.
+  - loop station : délégué au LoopPanel de la vue pilotée ;
+  - batterie : bascule du DrumPanel de la vue pilotée (même chemin que son interrupteur : départ calé sur la
+    mesure si la loop station est quantifiée) ; métronome : bascule du clic partagé (TransportState).
 
 La vue pilotée est fournie par `view_provider` : l'onglet Dashboard et
 l'onglet Classique ont chacun leur loop station et leur setlist, donc le
@@ -17,9 +19,13 @@ raccourci vise celle de la vue que l'utilisateur regarde (cf
 MainWindow.active_view). Doit vivre dans le thread Qt.
 """
 
+import logging
+
 from PySide6.QtCore import QObject
 
 from .actions import PRESET_COUNT
+
+log = logging.getLogger("melos.shortcuts")
 
 
 class ActionRouter(QObject):
@@ -30,12 +36,20 @@ class ActionRouter(QObject):
         self._view_provider = view_provider
 
     def handle(self, action_id: str):
+        log.info("raccourci : %s", action_id)
         if action_id.startswith("preset_"):
             self._goto_preset(int(action_id.split("_", 1)[1]) - 1)
         elif action_id == "nav_next":
             self._navigate(+1)
         elif action_id == "nav_previous":
             self._navigate(-1)
+        elif action_id == "drum_toggle":
+            drums = getattr(self._view_provider(), "drum_panel", None)
+            if drums is not None:
+                drums.toggle_enabled()
+        elif action_id == "click_toggle":
+            transport = self._state.transport
+            transport.set(click=not transport.click)
         elif action_id.startswith("loop_"):
             loop = getattr(self._view_provider(), "loop_panel", None)
             if loop is not None:
@@ -44,12 +58,14 @@ class ActionRouter(QObject):
     def _goto_preset(self, index: int):
         if not 0 <= index < PRESET_COUNT:
             return
+        log.info("preset %d -> %d (commandé par raccourci)", self._state.current_preset, index)
         self._sender.set_preset(index)
         self._state.on_preset_changed(index)  # mise à jour optimiste, cf ui/preset_panel.py
 
     def _navigate(self, direction: int):
         setlist = getattr(self._view_provider(), "setlist_panel", None)
         if setlist is not None and setlist.is_navigation_active():
+            log.info("navigation : setlist (%+d)", direction)
             setlist.navigate(direction)
         else:
             self._goto_preset((self._state.current_preset + direction) % PRESET_COUNT)

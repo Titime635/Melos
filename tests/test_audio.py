@@ -37,7 +37,7 @@ def pump(sec):
 
 p = LoopPanel(); pump(0.1)
 assert Env.streams[-1].active and p._audio_ok
-assert p._input_combo.currentText() == "Microphone (2- NUX NMP-03)"
+assert p._audio.input_name == "Microphone (2- NUX NMP-03)"
 print("a. démarrage sur l'interface du Mighty : OK")
 
 p._engine._state = "recording"; p._engine._record_chunks = [1]
@@ -54,15 +54,12 @@ assert not p._audio_ok, "interface pas encore listée : doit réessayer"
 Env.nux_present = True
 pump(2.0)
 assert p._audio_ok and Env.streams[-1].active and len(Env.streams) > n
-assert p._input_combo.currentText() == "Microphone (2- NUX NMP-03)"
+assert p._audio.input_name == "Microphone (2- NUX NMP-03)"
 assert Env.terminate_calls >= 2
 print("c. retour de l'audio après quelques tentatives : flux relancé sur la bonne interface : OK")
 
 # interface non-Mighty sélectionnée : ignorer la déconnexion
-p._input_combo.blockSignals(True); p._output_combo.blockSignals(True)
-p._input_combo.setCurrentText("Micro intégré"); p._output_combo.setCurrentText("Haut-parleurs PC")
-p._input_combo.blockSignals(False); p._output_combo.blockSignals(False)
-p._start_engine()
+p._audio.set_input("Micro intégré"); p._audio.set_output("Haut-parleurs PC")   # choix fait dans les Réglages
 p.on_device_availability_changed(False, "NUX NMP-03"); pump(0.1)
 assert p._audio_ok and Env.streams[-1].active
 print("d. interface audio autre que le Mighty : déconnexion MIDI ignorée : OK")
@@ -77,3 +74,6 @@ p2.on_device_availability_changed(False, "NUX NMP-03")
 assert p2._restore_generation == g + 1
 print("e. génération de tentatives invalidée à chaque changement : OK")
 print("\nAUDIO OK")
+
+import sounddevice as _sd
+_sd._initialized = 0  # évite la boucle atexit de sounddevice sur le faux _terminate

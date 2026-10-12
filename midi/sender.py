@@ -13,14 +13,17 @@ Garanties :
   - si un envoi échoue (câble arraché), le port est fermé et considéré mort ;
     le moniteur le voit via `is_open` et bascule en "déconnecté" ;
   - le port est protégé par un verrou : l'UI envoie depuis le thread Qt pendant
-    que le moniteur peut l'ouvrir/fermer depuis son propre thread.
+    que le moniteur peut l'ouvrir/fermer depuis son propre thread ;
+  - un port n'est jamais fermé, seulement abandonné (midi/port_graveyard.py) :
+    sous Windows, fermer un port dont le device vient d'être arraché fige tout
+    le process.
 """
 
 import threading
 
 import mido
 
-from . import protocol
+from . import port_graveyard, protocol
 
 
 class MidiSender:
@@ -52,12 +55,8 @@ class MidiSender:
 
     @staticmethod
     def _close_quietly(port):
-        if port is None:
-            return
-        try:
-            port.close()
-        except Exception:
-            pass  # port déjà mort, rien à faire de plus
+        """Ne ferme pas : abandonne le port (cf midi/port_graveyard.py)."""
+        port_graveyard.abandon(port)
 
     # --- Presets ---
     def set_preset(self, index: int):
@@ -83,9 +82,10 @@ class MidiSender:
         self._send_cc(protocol.CC_DRUM_MIDDLE, middle)
         self._send_cc(protocol.CC_DRUM_TREBLE, treble)
 
-    # TODO: sendDrumsTempo nécessite un SysEx différent (kSYX_DRUM,
-    # tempo encodé sur 2 bytes 7-bit) — pas encore testé empiriquement,
-    # à valider avant de l'exposer dans l'UI.
+    def drum_set_tempo(self, bpm: float, enabled: bool, style: int, level: int, bass: int, middle: int, treble: int):
+        """Tempo de la batterie (SysEx kSYX_DRUM : il embarque les autres réglages, d'où les paramètres)."""
+        payload = protocol.build_drum_sysex(enabled, style, level, bass, middle, treble, bpm)
+        self._send(mido.Message("sysex", data=payload))
 
     def _send_cc(self, control: int, value: int):
         self._send(mido.Message("control_change", control=control, value=value))

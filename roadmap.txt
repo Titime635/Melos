@@ -1,0 +1,32 @@
+Description : Python-based performance software for the NUX Mighty Plug Pro, turning the amp into a complete stage and studio ecosystem. It features a synchronized looper, automatic preset changes, and an integrated workflow designed for live performance and music creation. 280 caractères.
+
+
+Features V1 (terminée) : Modules de base
+- Contrôle des presets
+- Séquences live/setlist
+- Batterie d'accompagnement — style, volume, EQ 
+- Loop station
+- Enregistrement des réglages
+- Paramètres des modules assez personnalisables
+
+Features V2 : UX, fiabilité, ergonomie 
+- Settings Menu avec d'avantage d'options
+- Dashboard personnalisables (modules où je veux, redimensionner, enregistrement du preset)
+- Shortcuts pour se liberer du contrôle souris, permettant ainsi de jouer en utilisant l'appli
+- Quantization (Début et fin de looper/Overdub syncronisés ensemble et aussi par rapport à la batterie si activée) + Looper auto-length : en renseignant le nombre de mesures, le type de mesures (4/4, 8/8, etc...) et le tempo, quand on active le looper, il s'arrête quand il a pile atteint le nombre de mesures demandées
+- Detection de la connection au mighty (l'app se lance meme si ca se connecte pas mais on est informé visuellement que c'est pas connecté). Si ca se déconnecte, on le dit aussi, et on le dit plus quand on est reconnecté. On doit pouvoir éditer les modules même quand c'est déco
+
+Features V3 : Partition et édition des presets audio
+- Module partition en extrayant automatiquement les données d'un lien Songsterr pour afficher la partition interactive, la synchroniser parfaitement avec la vidéo YouTube et jouer les pistes MIDI, le tout sans abonnement Premium.
+- Integration de l'appli Mighty editor (qui est un .exe) dans l'application (elle permet de modifier les paramètres des presets). Je vais soit simplement faire tourner en sous-fenetre, ou alors recreer tous les paramètres de l'appli (ca sera alors la V3.5)
+- Lier le changement de preset au module partition afin de pouvoir placer visuellement les changement de presets sur la partition
+- Visualiseur Looper (représentation visuelle des boucles avec les formes d'onde (waveform) qui se superposent à chaque overdub)
+
+Features V4 : Hardware et Audio pro
+- Pédalier Arduino physique pour contrôler l'app
+- Enregistrement brut et transformé (Re-amping). Le brut pourrait être utilisé pour tester des réglages d'ampli différents dessus
+- Module partitions amélioré : Boucle, speedup, transposition, édition, gestion avancée des pistes audio pour chaque instrument, changement de batterie placé, de piste, des marqueurs, commentaires sur un passage
+- Mode musique : Reprends les idées du module de partition amélioré mais interface visuelle dédiée à une musique, tous les presets déjà là, des paramètres importants que je peux vouloir changer facilement, et surtout la timeline de la musique.
+
+Features V5 : IA
+- Connection de l'app à Jarvis pour amener l'app vers d'autres dimensions <=> Véritable ochestrateur de l'appli

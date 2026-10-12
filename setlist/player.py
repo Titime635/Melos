@@ -73,6 +73,27 @@ class SetlistPlayer(QObject):
         self._step_index = (self._step_index - 1) % len(seq.steps)
         self.step_changed.emit(self._step_index)
 
+    def go_to(self, index: int):
+        """Saute directement à l'étape `index` (clic sur une étape)."""
+        seq = self.active_sequence
+        if seq is None or not (0 <= index < len(seq.steps)) or index == self._step_index:
+            return
+        self._step_index = index
+        self.step_changed.emit(self._step_index)
+
+    def move_step(self, index: int, delta: int) -> bool:
+        """Décale l'étape `index` de `delta` rangs (±1) ; l'étape courante reste la même étape logique."""
+        seq = self.active_sequence
+        target = index + delta
+        if seq is None or not (0 <= index < len(seq.steps)) or not (0 <= target < len(seq.steps)):
+            return False
+        seq.steps[index], seq.steps[target] = seq.steps[target], seq.steps[index]
+        if self._step_index == index:
+            self._step_index = target
+        elif self._step_index == target:
+            self._step_index = index
+        return True
+
     def notify_step_removed(self, deleted_index: int):
         """À appeler après avoir supprimé l'étape `deleted_index` de la
         séquence active : décale l'index courant pour continuer à pointer

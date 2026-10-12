@@ -14,7 +14,8 @@ PRESET_COUNT = 7
 
 GROUP_PRESETS = "Presets"
 GROUP_LOOP = "Loop station"
-GROUPS = [GROUP_PRESETS, GROUP_LOOP]
+GROUP_RHYTHM = "Batterie et métronome"
+GROUPS = [GROUP_PRESETS, GROUP_LOOP, GROUP_RHYTHM]
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,8 @@ ACTIONS: list[Action] = [
     Action("loop_overdub", "Overdub / arrêter l'overdub", GROUP_LOOP),
     Action("loop_play", "Play / Stop", GROUP_LOOP),
     Action("loop_clear", "Effacer la boucle (maintenir 1 s)", GROUP_LOOP, hold_seconds=1.0),
+    Action("drum_toggle", "Batterie : activer / désactiver", GROUP_RHYTHM),
+    Action("click_toggle", "Métronome : activer / désactiver", GROUP_RHYTHM),
 ]
 
 BY_ID: dict[str, Action] = {a.id: a for a in ACTIONS}

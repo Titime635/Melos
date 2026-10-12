@@ -40,8 +40,11 @@ réel (pas juste déduites du code source de mightier_amp).
 - Direct en CC, pas de SysEx nécessaire
 - CC 77 (DRUMENABLE), 78 (DRUMTYPE), 79 (DRUMLEVEL)
 - CC 104/105/106 (EQ bass/middle/treble)
-- Tempo : PAS un CC, passe par un SysEx différent (`kSYX_DRUM`, tempo encodé
-  sur 2 bytes 7-bit) — **non testé empiriquement**, à valider avant de l'utiliser
+- Tempo : PAS un CC, passe par un SysEx `kSYX_DRUM` (0x19), même en-tête que le tuner (`43 58 70 19 <dir>`).
+  Données (d'après mightier_amp, `sendDrumsTempo`) : `enabled, style, volume, bass, middle, treble, tempoH, tempoL`
+  avec tempo = H*128 + L (2 octets 7 bits), plage 40-240. Il embarque TOUS les réglages batterie : on renvoie les valeurs
+  courantes (cf `protocol.build_drum_sysex`). **Non testé sur le matériel** : à vérifier (le tempo change-t-il ? le motif
+  redémarre-t-il si on change le tempo batterie en marche ?)
 
 ## Looper
 - **N'existe PAS sur le Plug Pro.** Feature exclusive à la Mighty Space.

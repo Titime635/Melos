@@ -31,6 +31,8 @@ from shortcuts.router import ActionRouter
 from state.amp_state import AmpState
 from midi.sender import MidiSender
 
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtCore import QEvent
 app = QApplication([])
 
 def pump(sec=0.1):
@@ -58,13 +60,13 @@ def new_manager(fake=None, **kw):
 
 # ---------------- 1. départ à vide ----------------
 m, fake, trig = new_manager()
-assert m.enabled and m.bindings() == {} and fake.registered() == []
+assert m.mode == "global" and m.bindings() == {} and fake.registered() == []
 print("1. aucune touche par défaut, rien d'enregistré : OK")
 
 # ---------------- 2. association, persistance, rechargement ----------------
 assert m.assign("loop_cycle", "F5") is None
 assert m.binding_for("loop_cycle") == "f5" and fake.registered() == ["f5"]
-assert saved()["shortcuts"]["bindings"] == {"loop_cycle": "f5"}
+assert saved()["shortcuts"]["bindings"] == {"loop_cycle": ["f5", ""]}
 m.shutdown()
 m2, fake2, trig2 = new_manager()
 assert m2.bindings() == {"loop_cycle": "f5"} and fake2.registered() == ["f5"]
@@ -85,16 +87,29 @@ fake2.release("f5"); fake2.tap("f5")
 assert len(trig2) == 3
 print("4. un appui = une action, la touche maintenue ne répète pas : OK")
 
-# ---------------- 5. interrupteur ----------------
+# ---------------- 5. trois modes ----------------
 changes = []
-m2.enabled_changed.connect(changes.append)
-m2.set_enabled(False)
-assert fake2.registered() == [] and saved()["shortcuts"]["enabled"] is False and changes == [False]
-fake2.tap("f5"); assert len(trig2) == 3
-m2.set_enabled(True)
-assert fake2.registered() == ["f5"] and changes == [False, True]
-fake2.tap("f5"); assert len(trig2) == 4
-print("5. interrupteur : désenregistre / ré-enregistre, persisté : OK")
+m2.mode_changed.connect(changes.append)
+m2.set_mode("off")
+assert fake2.registered() == [] and saved()["shortcuts"]["mode"] == "off" and changes == ["off"]
+fake2.tap("f5"); pump(0.05); assert len(trig2) == 3
+m2.set_mode("global")
+assert fake2.registered() == ["f5"] and changes == ["off", "global"]
+fake2.tap("f5"); pump(0.05); assert len(trig2) == 4
+# fenêtre active : ne réagit que si l'appli est au premier plan
+m2.set_mode("window")
+m2._is_app_active = lambda: False
+fake2.tap("f5"); pump(0.05); assert len(trig2) == 4, "mode fenêtre : ignoré hors de l'appli"
+m2._is_app_active = lambda: True
+fake2.tap("f5"); pump(0.05); assert len(trig2) == 5, "mode fenêtre : actif dans l'appli"
+m2.set_mode("global")
+m2._is_app_active = lambda: False
+fake2.tap("f5"); pump(0.05); assert len(trig2) == 6, "mode global : actif partout"
+# cycle : off -> window -> global -> off
+m2.set_mode("off"); m2.cycle_mode(); assert m2.mode == "window"
+m2.cycle_mode(); assert m2.mode == "global"; m2.cycle_mode(); assert m2.mode == "off"
+m2.set_mode("global")
+print("5. trois modes : off / fenêtre active / global, persistés : OK")
 
 # ---------------- 6. touche refusée par le système ----------------
 fake2.reject.add("bizarre")
@@ -116,12 +131,12 @@ pump(0.2); assert trig3 == ["loop_clear"], "un seul déclenchement par maintien"
 fake3.release("f9")
 fake3.press("f9"); pump(0.35); assert trig3 == ["loop_clear", "loop_clear"]
 fake3.release("f9")
-m3.set_enabled(False); fake3.press("f9"); pump(0.25); assert len(trig3) == 2
+m3.set_mode("off"); fake3.press("f9"); pump(0.25); assert len(trig3) == 2
 print("7. action à maintenir : trop court = rien, maintenu = une seule fois : OK")
 m3.shutdown()
 
 # ---------------- 8. capture d'une touche ----------------
-settings.update_settings({"shortcuts": {"enabled": True, "bindings": {}}})   # repart d'un état propre (7 a coupé l'interrupteur)
+settings.update_settings({"shortcuts": {"mode": "global", "bindings": {}}})   # repart d'un état propre (7 a coupé l'interrupteur)
 m4, fake4, trig4 = new_manager()
 m4.assign("loop_cycle", "f5")
 results = []
@@ -154,13 +169,13 @@ print("8. capture : OK, Échap, conflit, délai dépassé (raccourcis suspendus 
 m4.shutdown()
 
 # ---------------- 9. migration des anciennes touches de la setlist ----------------
-settings.update_settings({"shortcuts": {"enabled": True, "bindings": {}},
+settings.update_settings({"shortcuts": {"mode": "global", "bindings": {}},
                           "setlist": {**settings.load_settings()["setlist"], "next_key": "f7", "previous_key": "F8"}})
 m5, fake5, _ = new_manager()
 assert m5.bindings() == {"nav_next": "f7", "nav_previous": "f8"}, m5.bindings()
 s = saved()
 assert s["setlist"]["next_key"] is None and s["setlist"]["previous_key"] is None
-assert s["shortcuts"]["bindings"] == {"nav_next": "f7", "nav_previous": "f8"}
+assert s["shortcuts"]["bindings"] == {"nav_next": ["f7", ""], "nav_previous": ["f8", ""]}
 m5.shutdown()
 print("9. anciennes touches Suivant/Précédent de la setlist migrées : OK")
 
@@ -171,7 +186,7 @@ assert normalize_key("Ctrl + F5") == "ctrl+f5"
 print("10. avertissement sur les touches de saisie : OK")
 
 # ---------------- 11. non-régression : les sauvegardes ne s'écrasent plus ----------------
-settings.update_settings({"shortcuts": {"enabled": True, "bindings": {"loop_cycle": "f5"}}})
+settings.update_settings({"shortcuts": {"mode": "global", "bindings": {"loop_cycle": "f5"}}})
 state = AmpState()                                         # copie des réglages prise ICI...
 settings.update_settings({"loop": {**settings.load_settings()["loop"], "volume": 0.5}})  # ...changée ensuite
 state.on_preset_changed(2)                                 # AmpState sauvegarde
@@ -192,8 +207,11 @@ class StubSetlist:
     def __init__(self, active): self.active = active; self.moves = []
     def is_navigation_active(self): return self.active
     def navigate(self, d): self.moves.append(d)
+class StubDrums:
+    def __init__(self): self.toggles = 0
+    def toggle_enabled(self): self.toggles += 1
 class StubView:
-    def __init__(self, active): self.loop_panel = StubLoop(); self.setlist_panel = StubSetlist(active)
+    def __init__(self, active): self.loop_panel = StubLoop(); self.setlist_panel = StubSetlist(active); self.drum_panel = StubDrums()
 
 sender, view = StubSender(), StubView(False)
 state = AmpState()
@@ -209,12 +227,17 @@ assert view.setlist_panel.moves == [1, -1] and sender.presets == before, "setlis
 for a in ("loop_cycle", "loop_record", "loop_overdub", "loop_play", "loop_clear"):
     router.handle(a)
 assert view.loop_panel.actions == ["loop_cycle", "loop_record", "loop_overdub", "loop_play", "loop_clear"]
+router.handle("drum_toggle"); router.handle("drum_toggle"); assert view.drum_panel.toggles == 2
+c0 = state.transport.click
+router.handle("click_toggle"); assert state.transport.click == (not c0)
+router.handle("click_toggle"); assert state.transport.click == c0
 print("12. routeur : presets, suivant/précédent fusionnés (setlist si active), looper : OK")
 
 # ---------------- 13. LoopPanel.run_shortcut sur le vrai moteur ----------------
 from ui.loop_panel import LoopPanel
 p = LoopPanel(); pump(0.1)
 assert p._audio_ok
+p._transport.set(quantize=False, click=False, bars=0)   # ici on teste les raccourcis, pas la quantification
 e = p._engine
 p.run_shortcut("loop_overdub"); p.run_shortcut("loop_clear"); p.run_shortcut("loop_play")
 assert e.state == "idle", "hors état valide : rien ne se passe"
@@ -245,7 +268,7 @@ p.stop()
 # ---------------- 14. fenêtre complète ----------------
 from ui.main_window import MainWindow
 from setlist.model import Sequence, Step
-settings.update_settings({"shortcuts": {"enabled": True, "bindings": {}}})
+settings.update_settings({"shortcuts": {"mode": "global", "bindings": {}}})
 state = AmpState(); sender = MidiSender()
 mgr, fk, _ = new_manager()
 window = MainWindow(state, sender, mgr); window.show(); pump(0.1)
@@ -275,11 +298,13 @@ window.switchTo(dash); pump(0.1)
 assert window.active_view() is dash
 # interrupteur rapide dans la barre de navigation
 toggle = window.navigationInterface.widget("shortcuts_toggle")
-assert toggle.text() == "Raccourcis actifs"
+assert toggle.text() == "Raccourcis : global"
 toggle.clicked.emit(True); pump(0.05)
-assert not mgr.enabled and toggle.text() == "Raccourcis coupés" and fk.registered() == []
+assert mgr.mode == "off" and toggle.text() == "Raccourcis désactivés" and fk.registered() == []
 toggle.clicked.emit(True); pump(0.05)
-assert mgr.enabled and toggle.text() == "Raccourcis actifs" and "f6" in fk.registered()
+assert mgr.mode == "window" and toggle.text() == "Raccourcis : fenêtre active"
+toggle.clicked.emit(True); pump(0.05)
+assert mgr.mode == "global" and toggle.text() == "Raccourcis : global" and "f6" in fk.registered()
 print("14. fenêtre : presets, suivant/précédent, vue pilotée suit l'onglet, interrupteur nav : OK")
 
 # ---------------- 15. page Raccourcis ----------------
@@ -308,3 +333,65 @@ assert fk.registered() == [], "touches non désenregistrées à la fermeture"
 assert time.time() - t0 < 2
 print("16. fermeture : touches désenregistrées : OK")
 print("\nTOUS LES TESTS PASSENT")
+
+# ---------------- 17. pavé numérique vs flèches ----------------
+from shortcuts.backend import event_is_key
+assert event_is_key("4", "4") and event_is_key("left ctrl", "ctrl") and event_is_key("F5", "f5")
+assert not event_is_key("left", "4") and not event_is_key("right", "6"), "les flèches ne sont pas les chiffres du pavé"
+print("17. flèche gauche/droite != touches 4/6 du pavé numérique : OK")
+
+# ---------------- 18. deux touches par action ----------------
+settings.update_settings({"shortcuts": {"mode": "global", "bindings": {"loop_cycle": "f5"}}})   # ancien format (chaîne)
+m6, fake6, trig6 = new_manager()
+assert m6.keys_for("loop_cycle") == ["f5", ""], m6.keys_for("loop_cycle")
+assert m6.assign("loop_cycle", "f6", slot=1) is None and m6.keys_for("loop_cycle") == ["f5", "f6"]
+assert sorted(fake6.registered()) == ["f5", "f6"]
+assert saved()["shortcuts"]["bindings"]["loop_cycle"] == ["f5", "f6"]
+fake6.tap("f5"); fake6.tap("f6"); pump(0.05)
+assert trig6 == ["loop_cycle", "loop_cycle"], trig6
+err = m6.assign("loop_cycle", "f5", slot=1)
+assert err and "autre touche" in err
+err = m6.assign("nav_next", "f6")
+assert err and "déjà utilisée" in err
+assert m6.assign("loop_cycle", None, slot=0) is None            # on peut ne garder que la 2e
+assert m6.keys_for("loop_cycle") == ["", "f6"] and m6.binding_for("loop_cycle") == "f6" and fake6.registered() == ["f6"]
+assert m6.assign("preset_1", "f7", slot=1) is None and m6.keys_for("preset_1") == ["", "f7"]   # 2e sans la 1re
+m6.start_capture("preset_2", 1); fake6.user_presses_in_capture("f9")
+wait_until(lambda: m6.keys_for("preset_2") == ["", "f9"], what="capture sur le 2e emplacement")
+assert m6.assign("loop_cycle", None, slot=1) is None and m6.binding_for("loop_cycle") is None
+print("18. deux touches indépendantes par action (ancien format migré, conflits, capture) : OK")
+
+# ---------------- 19. aucun raccourci pendant la saisie dans un champ de texte ----------------
+from PySide6.QtWidgets import QLineEdit
+m7, fake7, trig7 = new_manager()
+m7.assign("loop_cycle", "f5"); m7.assign("preset_1", "ctrl+a")
+box = QLineEdit(); box.show(); box.setFocus(); pump(0.05)
+m7._is_app_active = lambda: True
+assert manager_module.typing_in_app()
+fake7.tap("f5"); fake7.tap("ctrl+a"); pump(0.05)
+assert trig7 == [], "F5 / Ctrl+A ne doivent rien faire dans un champ de texte"
+box.clearFocus(); box.hide(); pump(0.05)
+fake7.tap("f5"); pump(0.05)
+assert trig7 == ["loop_cycle"]
+print("19. aucun raccourci pendant la saisie dans un champ de texte : OK")
+
+# ---------------- 20. SpinBox / liste éditable : le clavier leur appartient ----------------
+from ui.widgets import NoWheelSpinBox
+from PySide6.QtTest import QTest
+from PySide6.QtCore import Qt as _Qt
+m8, fake8, trig8 = new_manager()
+m8.assign("preset_5", "5"); m8.assign("loop_cycle", "f5")
+spin = NoWheelSpinBox(); spin.show(); pump(0.05)
+QTest.mouseClick(spin, _Qt.LeftButton); pump(0.05)
+m8._is_app_active = lambda: True
+assert manager_module.typing_in_app(), "le focus est sur le SpinBox lui-même"
+fake8.tap("5"); fake8.tap("f5"); pump(0.05)
+assert trig8 == [], "pas de raccourci pendant la saisie d'un nombre"
+key_ev = QKeyEvent(QEvent.KeyPress, _Qt.Key_5, _Qt.NoModifier, "5")
+assert not m8.swallows(key_ev), "la touche 5 n'est pas avalée dans un SpinBox"
+spin.hide(); spin.clearFocus(); pump(0.05)
+assert not manager_module.typing_in_app()
+print("20. SpinBox : aucun raccourci ni touche avalée pendant la saisie d'un nombre : OK")
+
+import sounddevice as _sd
+_sd._initialized = 0  # évite la boucle atexit de sounddevice sur le faux _terminate

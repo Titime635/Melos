@@ -16,7 +16,7 @@ import threading
 import mido
 from PySide6.QtCore import QThread, Signal
 
-from . import protocol
+from . import port_graveyard, protocol
 
 
 class MidiListener(QThread):
@@ -24,6 +24,7 @@ class MidiListener(QThread):
     preset_changed = Signal(int)                 # program change reçu
     tuner_note = Signal(int)                      # CC_TUNER_NOTE
     tuner_cent = Signal(int)                       # CC_TUNER_CENT
+    tuner_string = Signal(int)                     # CC_TUNER_NUMBER (diagnostic)
     tuner_state = Signal(bool)                     # CC_TUNER_STATE
     drum_cc_received = Signal(int, int)            # (control, value) brut, à trier côté state
     connection_lost = Signal()                     # la lecture du port a échoué
@@ -62,12 +63,8 @@ class MidiListener(QThread):
 
     @staticmethod
     def _close_quietly(port):
-        if port is None:
-            return
-        try:
-            port.close()
-        except Exception:
-            pass
+        """Ne ferme pas : abandonne le port (cf midi/port_graveyard.py)."""
+        port_graveyard.abandon(port)
 
     # --- Boucle de lecture ---
 
@@ -101,6 +98,8 @@ class MidiListener(QThread):
                 self.tuner_note.emit(msg.value)
             elif msg.control == protocol.CC_TUNER_CENT:
                 self.tuner_cent.emit(msg.value)
+            elif msg.control == protocol.CC_TUNER_NUMBER:
+                self.tuner_string.emit(msg.value)
             elif msg.control == protocol.CC_TUNER_STATE:
                 self.tuner_state.emit(msg.value == 1)
             elif msg.control in (
@@ -119,5 +118,5 @@ class MidiListener(QThread):
 
     def stop(self):
         self._running = False
-        self.wait()
+        self.wait(2000)  # jamais d'attente infinie à la fermeture de l'appli
         self.detach()

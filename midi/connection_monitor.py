@@ -24,6 +24,7 @@ import threading
 import mido
 from PySide6.QtCore import QThread, Signal
 
+from settings import load_settings
 from . import protocol
 
 log = logging.getLogger("melos.midi")
@@ -40,22 +41,60 @@ class ConnectionMonitor(QThread):
         self._settle_delay = settle_delay  # pause après ouverture, avant de dire "connecté"
         self._stop_event = threading.Event()
         self._connected = False
+        self._current: tuple[str, str] | None = None
+        self._last_enum_error: str | None = None  # pour ne pas répéter le même avertissement chaque seconde
+        self._reconnect = False   # reconnexion demandée (changement de port depuis la page Réglages)
+        self.mode = "auto"        # "auto" : cherche le Mighty ; "manual" : ports imposés
+        self.manual_in: str | None = None
+        self.manual_out: str | None = None
+        self.reload_preferences()
 
     @property
     def connected(self) -> bool:
         return self._connected
 
-    # --- Détection / ouverture ---
+    # --- Choix du port (page Réglages) ---
+
+    def reload_preferences(self):
+        cfg = load_settings()["midi"]
+        self.mode = "manual" if cfg.get("mode") == "manual" else "auto"
+        self.manual_in = cfg.get("input_name")
+        self.manual_out = cfg.get("output_name")
+
+    def apply_preferences(self):
+        """Relit le choix de port et force une reconnexion (le lien actuel est refermé au prochain tour)."""
+        self.reload_preferences()
+        self._reconnect = True
 
     @staticmethod
-    def _find_ports() -> tuple[str, str] | None:
-        """(entrée, sortie) du Mighty si les deux sont listés, sinon None."""
+    def list_ports() -> tuple[list[str], list[str]]:
         try:
-            in_name = protocol.find_port(mido.get_input_names())
-            out_name = protocol.find_port(mido.get_output_names())
+            return list(mido.get_input_names()), list(mido.get_output_names())
         except Exception as exc:
             log.warning("énumération des ports MIDI impossible : %s", exc)
+            return [], []
+
+    @property
+    def current_ports(self) -> tuple[str, str] | None:
+        return self._current
+
+    # --- Détection / ouverture ---
+
+    def _find_ports(self) -> tuple[str, str] | None:
+        """(entrée, sortie) du Mighty si les deux sont listés, sinon None."""
+        try:
+            inputs, outputs = mido.get_input_names(), mido.get_output_names()
+            if self.mode == "manual":
+                in_name = self.manual_in if self.manual_in in inputs else None
+                out_name = self.manual_out if self.manual_out in outputs else None
+            else:
+                in_name, out_name = protocol.find_port(inputs), protocol.find_port(outputs)
+        except Exception as exc:
+            if str(exc) != self._last_enum_error:
+                log.warning("énumération des ports MIDI impossible : %s", exc)
+                self._last_enum_error = str(exc)
             return None
+        self._last_enum_error = None
         if in_name is None or out_name is None:
             return None
         return in_name, out_name
@@ -74,6 +113,7 @@ class ConnectionMonitor(QThread):
             self._release()
             return False
         self._connected = True
+        self._current = (in_name, out_name)
         log.info("Mighty connecté (entrée=%r, sortie=%r)", in_name, out_name)
         return True
 
@@ -101,12 +141,17 @@ class ConnectionMonitor(QThread):
     def _tick(self) -> bool:
         """Un tour de surveillance. False si l'arrêt a été demandé."""
         if self._connected:
-            if self._link_lost():
+            if self._reconnect or self._link_lost():
+                self._reconnect = False
                 self._release()
                 self._connected = False
+                self._current = None
                 log.warning("Mighty déconnecté")
                 self.connected_changed.emit(False)
-        elif self.try_connect():
+        else:
+            self._reconnect = False   # déjà déconnecté : le prochain essai relit de toute façon le choix de port
+            if not self.try_connect():
+                return True
             # Laisse Windows finir d'énumérer le device avant que l'appli
             # lui repousse son état.
             if self._stop_event.wait(self._settle_delay):
@@ -116,6 +161,6 @@ class ConnectionMonitor(QThread):
 
     def stop(self):
         self._stop_event.set()
-        self.wait()
+        self.wait(3000)  # jamais d'attente infinie à la fermeture de l'appli
         self._release()
         self._connected = False

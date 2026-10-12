@@ -149,7 +149,9 @@ wait_until(lambda: not state.connected, what="déconnexion détectée")
 settle(0.1)
 assert indicator_text(window) == "Mighty déconnecté"
 assert banner_alive(window)
-assert all(p.closed for p in W.opened_in + W.opened_out), "ports non fermés"
+from midi import port_graveyard
+assert not any(p.closed for p in W.opened_in + W.opened_out), "un port a été fermé (risque de blocage Windows)"
+assert port_graveyard.has_abandoned() and len(port_graveyard._dead) == len(W.opened_in + W.opened_out)
 sender.set_preset(1)  # ne doit pas lever
 print("5. débranchement détecté (liste) + ports fermés : OK")
 
@@ -231,3 +233,6 @@ print("12. exception inattendue dans le thread : surveillance toujours active : 
 shutdown(listener, sender, monitor, window)
 
 print("\nTOUS LES TESTS PASSENT")
+
+import sounddevice as _sd
+_sd._initialized = 0  # évite la boucle atexit de sounddevice sur le faux _terminate

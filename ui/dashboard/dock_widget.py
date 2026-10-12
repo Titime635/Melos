@@ -18,12 +18,13 @@ la référence pour permettre de le rajouter plus tard (bouton "+").
 """
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QDockWidget, QWidget, QHBoxLayout
+from PySide6.QtWidgets import QDockWidget, QWidget, QHBoxLayout, QScrollArea, QFrame
 from qfluentwidgets import TransparentToolButton, FluentIcon
 
-TITLE_STRIP_HEIGHT_LOCKED = 6
+TITLE_STRIP_HEIGHT_LOCKED = 4
 TITLE_STRIP_HEIGHT_EDIT = 22
 BUTTON_SIZE = 18
+COLLAPSE_RESTORE_MIN_HEIGHT = 80
 
 
 def _dim(hex_color: str, factor: float = 0.4) -> str:
@@ -92,14 +93,28 @@ class ModuleDock(QDockWidget):
         self.module_id = module_id
         self._accent_color = accent_color
         self._content = content
-        self._content_min_height = content.minimumSizeHint().height()
+        self._content_min_height = min(content.minimumSizeHint().height(), COLLAPSE_RESTORE_MIN_HEIGHT)
 
         self._strip = _TitleStrip(accent_color, self)
         self._strip.collapse_toggled.connect(self._on_collapse_toggled)
         self._strip.delete_requested.connect(lambda: self.delete_requested.emit(self))
         self.setTitleBarWidget(self._strip)
 
-        self.setWidget(content)
+        if getattr(content, "adaptive", False):
+            # Module qui adapte lui-même son contenu à sa taille (looper, tempo...) : pas de défilement,
+            # c'est tout l'intérêt du dashboard.
+            self._body = content
+        else:
+            # Les autres modules ne se compressent pas : leur contenu défile s'ils sont plus petits que
+            # lui, au lieu d'écraser leurs lignes les unes sur les autres (et sur le module voisin).
+            self._body = QScrollArea()
+            self._body.setWidgetResizable(True)
+            self._body.setFrameShape(QFrame.NoFrame)
+            self._body.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._body.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+            self._body.viewport().setAutoFillBackground(False)
+            self._body.setWidget(content)
+        self.setWidget(self._body)
         self.set_edit_mode(False)  # verrouillé par défaut
 
     def set_edit_mode(self, active: bool):
@@ -113,7 +128,7 @@ class ModuleDock(QDockWidget):
         self._content.setEnabled(not active)
 
     def _on_collapse_toggled(self, collapsed: bool):
-        self._content.setVisible(not collapsed)
+        self._body.setVisible(not collapsed)
         if collapsed:
             self.setFixedHeight(TITLE_STRIP_HEIGHT_EDIT)
         else:

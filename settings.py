@@ -13,10 +13,9 @@ connaît rien du MIDI, cf audio/loop_engine.py).
 
 import json
 import os
-from pathlib import Path
 from typing import Any
 
-SETTINGS_FILE = Path(__file__).resolve().parent / "app_settings.json"
+from paths import SETTINGS_FILE
 
 _DEFAULTS: dict[str, Any] = {
     "current_preset": 0,
@@ -27,10 +26,18 @@ _DEFAULTS: dict[str, Any] = {
         "bass": 0,
         "middle": 0,
         "treble": 0,
+        "favorites": [],   # styles favoris (CC brut), cf ui/drum_panel.py
     },
     "tuner": {
         "mode": 0,           # 0=chromatique, 1=guitare compensée, 2=guitare standard, 3=basse
         "requested": False,  # état demandé par l'utilisateur, pas une confirmation matérielle
+        "ref_hz": 440,       # référence du La (module Tuner, engrenage)
+        "sound": True,       # petit son quand une corde est accordée
+        "tuning": "Standard",
+        "cent_zero": None,   # valeur brute du CC 72 pour « 0 cent » (None : ancien fichier de calibration, sinon 52)
+        "cent_scale": 1.0,   # cents réels par unité du CC 72
+        "cent_zero_notes": {},   # zéro propre à chaque note (classe de hauteur 0-11 -> valeur brute du CC 72)
+        "note_shift": 0,     # correction de la note du CC 12, en demi-tons
     },
     "loop": {
         "input_device_name": None,
@@ -40,6 +47,32 @@ _DEFAULTS: dict[str, Any] = {
         "overdub_passes_target": 1,  # 0 = illimité (arrêt manuel)
         "count_in_enabled": False,
         "count_in_bpm": 100,
+        # Le volume Windows de la sortie du Mighty s'ajoute au curseur de l'appli : on le remet à
+        # 100 % au démarrage du flux (cf audio/system_volume.py). Mettre False pour ne pas y toucher.
+        "force_system_volume": True,
+        "system_volume_keyword": "NUX NMP-03",
+        "blocksize": 256,         # taille du tampon audio en échantillons (page Réglages)
+    },
+    # Port MIDI : "auto" cherche le Mighty tout seul ; "manual" impose les ports choisis (page Réglages)
+    "midi": {
+        "mode": "auto",
+        "input_name": None,
+        "output_name": None,
+    },
+    "ui": {
+        "theme": "auto",      # "auto" (celui de Windows) | "light" | "dark"
+    },
+    # Tempo et quantification (partagés entre le looper et la batterie, cf state/transport_state.py)
+    "transport": {
+        "bpm": 100,           # noires par minute
+        "beats": 4,           # signature : beats / unit (4/4, 6/8, 3/4...)
+        "unit": 4,
+        "bars": 0,            # auto-length : nombre de mesures de la 1re prise (0 = fin manuelle)
+        "quantize": True,     # Rec / Overdub / Stop attendent la prochaine mesure
+        "click": False,       # métronome audible
+        "sync_drums": True,   # le démarrage de la batterie est calé sur la mesure + tempo envoyé à l'ampli
+        "drum_latency_ms": 0,    # avance à donner à l'ordre MIDI de démarrage de la batterie
+        "latency_comp_ms": 0,    # latence aller-retour audio à compenser sur les prises
     },
     "setlist": {
         "active_sequence_name": None,
@@ -47,11 +80,23 @@ _DEFAULTS: dict[str, Any] = {
         "next_key": None,      # obsolète : migré vers "shortcuts" au lancement (cf shortcuts/manager.py)
         "previous_key": None,  # idem
     },
+    # Agencement du Dashboard (cf ui/dashboard_interface.py) : état des docks (QMainWindow.saveState, base64)
+    # et modules supprimés
+    "dashboard": {
+        "state": None,
+        "hidden": [],
+    },
     "shortcuts": {
-        "enabled": True,   # interrupteur global des raccourcis
+        "mode": None,      # "off" | "window" | "global" ; None = ancien réglage, voir "enabled"
+        "enabled": True,   # obsolète (avant les 3 modes) : True -> global, False -> off
         "bindings": {},    # {id d'action: touche}, ex {"loop_cycle": "f5"} — aucune par défaut
     },
 }
+
+
+def load_defaults() -> dict:
+    """Copie profonde des réglages par défaut."""
+    return json.loads(json.dumps(_DEFAULTS))
 
 
 def load_settings() -> dict:

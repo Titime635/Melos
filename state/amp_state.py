@@ -20,7 +20,21 @@ parle pas au MIDI).
 from PySide6.QtCore import QObject, Signal
 
 from midi import protocol
+from midi.drum_styles import clamp_raw
 from settings import load_settings, update_settings
+from state.transport_state import TransportState
+from state.tuner_session import TunerSession
+
+
+def _legacy_cent_zero() -> int:
+    """Ancien fichier de calibration du tuner (ui/tuner_calibration.json), sinon le milieu de la plage observée."""
+    import json
+    from pathlib import Path
+    try:
+        raw = json.loads((Path(__file__).resolve().parent.parent / "ui" / "tuner_calibration.json").read_text("utf-8"))
+        return int(raw["cent_zero_offset"])
+    except Exception:
+        return 50   # hypothèse : le CC 72 va de 0 à 100 autour de 50 (= juste)
 
 
 class AmpState(QObject):
@@ -28,16 +42,25 @@ class AmpState(QObject):
     tuner_updated = Signal()       # note/cent/enabled/requested ont changé, relire les attributs
     drum_updated = Signal()        # idem pour les réglages batterie
     connection_changed = Signal(bool)  # le Mighty vient d'être (dé)connecté
+    setlist_enabled_changed = Signal(bool)  # interrupteur "setlist active" (partagé Dashboard / Classique)
 
     def __init__(self):
         super().__init__()
         self._settings = load_settings()
 
         self.current_preset: int = self._settings["current_preset"]
+        # Interrupteur "setlist active" : un seul état pour les deux vues (Dashboard et Classique ont
+        # chacune leur SetlistPanel). Sinon l'une restait allumée quand on coupait l'autre, et les
+        # raccourcis suivant/précédent (qui suivent la setlist si elle est active) se mettaient à
+        # parcourir la séquence au lieu des presets.
+        self.setlist_enabled: bool = bool(self._settings["setlist"]["enabled"])
         # Connexion au Mighty : mise à jour par le ConnectionMonitor (cf
         # midi/connection_monitor.py), jamais persistée. Hors connexion l'UI
         # continue d'éditer cet état ; il est repoussé au device à la reconnexion.
         self.connected: bool = False
+
+        # Tempo / signature / quantification (partagé par les loop stations et la batterie)
+        self.transport = TransportState(self)
 
         # Tuner
         # `tuner_requested` : demandé localement par l'UI, c'est la source de
@@ -47,16 +70,29 @@ class AmpState(QObject):
         # inutilisable pour piloter un simple interrupteur on/off.
         t = self._settings["tuner"]
         self.tuner_requested: bool = t["requested"]
-        self.tuner_mode: int = t["mode"]
+        self.tuner_mode: int = 0   # toujours chromatique : les accordages sont gérés ici (cf midi/tunings.py)
+        self.tuner_ref_hz: int = max(protocol.TUNER_REF_HZ_MIN, min(protocol.TUNER_REF_HZ_MAX, int(t.get("ref_hz", 440))))
+        self.tuner_sound: bool = bool(t.get("sound", True))
+        self.tuner_tuning: str = t.get("tuning", "Standard")
+        zero = t.get("cent_zero")
+        self.tuner_cent_zero: int = int(zero) if zero else _legacy_cent_zero()   # 0 / absent : jamais un vrai zéro
+        self.tuner_cent_scale: float = float(t.get("cent_scale", 1.0))
+        self.tuner_cent_zero_notes: dict[int, int] = {int(k): int(v) for k, v in t.get("cent_zero_notes", {}).items()}
+        self.tuner_note_shift: int = int(t.get("note_shift", 0))   # demi-tons ajoutés au CC 12 (correction)
+        self.tuner = TunerSession(self)   # lecture lissée, cordes accordées, son (cf state/tuner_session.py)
         self.tuner_enabled: bool = False  # miroir brut de CC 11, gardé pour diagnostic
         self.tuner_note: int = 0
         self.tuner_cent: int = 0
+        self.tuner_string: int = 0   # CC 71 brut (diagnostic)
 
         # Batterie (direct en CC, pas de SysEx) — restaurée depuis app_settings.json
         d = self._settings["drum"]
         self.drum_enabled: bool = d["enabled"]
-        self.drum_style: int = d["style"]
-        self.drum_level: int = d["level"]
+        self.drum_style: int = clamp_raw(d["style"])
+        self.drum_favorites: list[int] = sorted({clamp_raw(i) for i in d.get("favorites", [])})
+        # Plafonné : une valeur sauvegardée avant la mise à l'échelle du curseur (cf midi/protocol.py)
+        # pourrait être bien trop forte, et elle est renvoyée à l'ampli au lancement.
+        self.drum_level: int = min(d["level"], protocol.DRUM_LEVEL_CC_CAP)
         self.drum_bass: int = d["bass"]
         self.drum_middle: int = d["middle"]
         self.drum_treble: int = d["treble"]
@@ -73,12 +109,27 @@ class AmpState(QObject):
                 "bass": self.drum_bass,
                 "middle": self.drum_middle,
                 "treble": self.drum_treble,
+                "favorites": self.drum_favorites,
             },
             "tuner": {
                 "mode": self.tuner_mode,
                 "requested": self.tuner_requested,
+                "ref_hz": self.tuner_ref_hz,
+                "sound": self.tuner_sound,
+                "tuning": self.tuner_tuning,
+                "cent_zero": self.tuner_cent_zero,
+                "cent_scale": self.tuner_cent_scale,
+                "note_shift": self.tuner_note_shift,
+                "cent_zero_notes": {str(k): v for k, v in self.tuner_cent_zero_notes.items()},
             },
         })
+
+    def set_setlist_enabled(self, enabled: bool):
+        if enabled == self.setlist_enabled:
+            return
+        self.setlist_enabled = enabled
+        update_settings({"setlist": {**load_settings()["setlist"], "enabled": enabled}})
+        self.setlist_enabled_changed.emit(enabled)
 
     def set_connected(self, connected: bool):
         if connected == self.connected:
@@ -102,6 +153,10 @@ class AmpState(QObject):
         self.tuner_cent = cent
         self.tuner_updated.emit()
 
+    def on_tuner_string(self, value: int):
+        self.tuner_string = value
+        self.tuner_updated.emit()
+
     def on_tuner_state(self, enabled: bool):
         self.tuner_enabled = enabled
         self.tuner_updated.emit()
@@ -113,8 +168,10 @@ class AmpState(QObject):
         self.tuner_updated.emit()
         self._persist()
 
-    def set_tuner_mode(self, mode: int):
-        self.tuner_mode = mode
+    def set_tuner_options(self, **changes):
+        """ref_hz, sound, tuning, cent_zero, cent_scale (module Tuner)."""
+        for name, value in changes.items():
+            setattr(self, "tuner_" + name, value)
         self.tuner_updated.emit()
         self._persist()
 
@@ -145,6 +202,13 @@ class AmpState(QObject):
 
     def set_drum_style(self, style: int):
         self.drum_style = style
+        self.drum_updated.emit()
+        self._persist()
+
+    def toggle_drum_favorite(self, raw: int):
+        favs = set(self.drum_favorites)
+        favs.symmetric_difference_update({clamp_raw(raw)})
+        self.drum_favorites = sorted(favs)
         self.drum_updated.emit()
         self._persist()
 

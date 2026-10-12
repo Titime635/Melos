@@ -11,7 +11,9 @@ détachés du dock (removeDockWidget) et gardés dans `_hidden`, pour pouvoir
 DashboardInterface).
 """
 
-from PySide6.QtCore import Qt, Signal
+import base64
+
+from PySide6.QtCore import QByteArray, Qt, Signal
 from PySide6.QtWidgets import QMainWindow
 
 from .dock_widget import ModuleDock
@@ -31,6 +33,7 @@ class DashboardDockArea(QMainWindow):
     def add_module(self, module_id: str, title: str, accent_color: str, content,
                     area=Qt.LeftDockWidgetArea) -> ModuleDock:
         dock = ModuleDock(module_id, title, accent_color, content, parent=self)
+        dock.setObjectName(f"dock_{module_id}")   # requis par saveState / restoreState
         dock.delete_requested.connect(self._on_delete_requested)
         self.addDockWidget(area, dock)
         dock.set_edit_mode(self._edit_mode)
@@ -47,6 +50,44 @@ class DashboardDockArea(QMainWindow):
         self._edit_mode = active
         for dock in self._docks.values():
             dock.set_edit_mode(active)
+
+    # --- Sauvegarde / restauration de l'agencement ---
+
+    LAYOUT_VERSION = 2   # 2 : tuner unique (ancienne bande de 58 px supprimée) -> les agencements v1 sont ignorés
+
+    def layout_snapshot(self) -> tuple[str, list[str]]:
+        """(état des docks en base64, modules supprimés) : tout ce qu'il faut pour retrouver l'agencement."""
+        state = base64.b64encode(bytes(self.saveState(self.LAYOUT_VERSION))).decode("ascii")
+        return state, sorted(self._hidden)
+
+    def restore_layout(self, state: str | None, hidden: list[str]) -> bool:
+        """Remet les modules supprimés à l'écart puis l'agencement sauvegardé. Les modules inconnus sont
+        ignorés ; renvoie False (agencement par défaut conservé) si l'état est illisible."""
+        for module_id in hidden:
+            if module_id in self._docks:
+                self._on_delete_requested(self._docks[module_id])
+        if not state:
+            return False
+        try:
+            return bool(self.restoreState(QByteArray(base64.b64decode(state)), self.LAYOUT_VERSION))
+        except Exception:
+            return False
+
+    def apply_layout(self, state: str | None, hidden: list[str]):
+        """Passe à l'agencement donné (annuler / rétablir) : rajoute ou retire les modules qui diffèrent,
+        puis restaure la disposition."""
+        for module_id in list(self._hidden):
+            if module_id not in hidden:
+                self.restore_module(module_id)
+        for module_id in hidden:
+            if module_id in self._docks:
+                self._on_delete_requested(self._docks[module_id])
+        if state:
+            try:
+                self.restoreState(QByteArray(base64.b64decode(state)), self.LAYOUT_VERSION)
+            except Exception:
+                pass
+        self.modules_hidden_changed.emit()
 
     def module_geometry(self, module_id: str):
         return self._docks[module_id].geometry()

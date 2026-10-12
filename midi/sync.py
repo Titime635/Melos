@@ -6,11 +6,16 @@ sur autre chose, ou avoir été débranché pendant que l'utilisateur éditait l
 modules (l'UI met alors AmpState à jour sans rien envoyer, cf midi/sender.py).
 """
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QTimer
 
-from midi.protocol import TUNER_REF_PITCH_440HZ
+from midi import protocol
 from midi.sender import MidiSender
 from state.amp_state import AmpState
+
+
+def send_drum_tempo(state: AmpState, sender: MidiSender):
+    sender.drum_set_tempo(state.transport.bpm, state.drum_enabled, state.drum_style, state.drum_level,
+                          state.drum_bass, state.drum_middle, state.drum_treble)
 
 
 def push_state(state: AmpState, sender: MidiSender):
@@ -19,7 +24,8 @@ def push_state(state: AmpState, sender: MidiSender):
     sender.drum_set_style(state.drum_style)
     sender.drum_set_level(state.drum_level)
     sender.drum_set_eq(state.drum_bass, state.drum_middle, state.drum_treble)
-    sender.tuner_enable(on=state.tuner_requested, mode=state.tuner_mode, ref_pitch=TUNER_REF_PITCH_440HZ)
+    send_drum_tempo(state, sender)
+    sender.tuner_enable(on=state.tuner_requested, mode=0, ref_pitch=protocol.tuner_ref_byte(state.tuner_ref_hz))
 
 
 class DeviceSync(QObject):
@@ -32,6 +38,12 @@ class DeviceSync(QObject):
         self._state = state
         self._sender = sender
         state.connection_changed.connect(self._on_connection_changed)
+        # Tempo -> batterie, regroupé : le SysEx embarque tous les réglages, inutile d'en envoyer un par cran
+        self._tempo_timer = QTimer(self)
+        self._tempo_timer.setSingleShot(True)
+        self._tempo_timer.setInterval(250)
+        self._tempo_timer.timeout.connect(lambda: send_drum_tempo(state, sender))
+        state.transport.changed.connect(lambda name: self._tempo_timer.start() if name == "bpm" else None)
 
     def _on_connection_changed(self, connected: bool):
         if connected:

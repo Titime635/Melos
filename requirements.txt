@@ -5,3 +5,4 @@ python-rtmidi>=1.5
 sounddevice>=0.4
 soundfile>=0.12
 keyboard>=0.13
+pycaw>=20230407; sys_platform == "win32"  # volume Windows de l'interface du Mighty (cf audio/system_volume.py)
