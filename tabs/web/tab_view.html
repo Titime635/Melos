@@ -1,0 +1,467 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root { --bg:#fff; --fg:#1b1b1f; --muted:#6b6b76; }
+  body.dark { --bg:#1e1f24; --fg:#e8e8ee; --muted:#9a9aa6; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px "Segoe UI",sans-serif; }
+  #layout { display:flex; flex-direction:column; height:100%; }
+  #score { flex:1; overflow-x:hidden; overflow-y:auto; position:relative; }
+  #at { position:relative; }
+  #lyr { position:absolute; left:0; top:0; width:100%; height:0; pointer-events:none; }
+  #rhy { position:absolute; left:0; top:0; overflow:visible; pointer-events:none; }
+  #rhy line, #rhy circle { stroke:var(--fg); }
+  #rhy circle { fill:var(--fg); }
+  .sec { position:absolute; white-space:nowrap; font:700 12px "Segoe UI",Roboto,sans-serif; color:var(--fg);
+         border:1.5px solid var(--fg); border-radius:4px; padding:0 6px; line-height:17px; background:var(--bg); }
+  .lyr { position:absolute; white-space:nowrap; font:italic 600 13px "Segoe UI",Roboto,sans-serif; color:var(--fg);
+         transform:translateX(-2px); }
+  #msg { padding:24px; color:var(--muted); }
+  .at-cursor-bar { background:rgba(80,140,255,.18); }
+  .at-cursor-beat { background:rgba(80,140,255,.9); width:3px; }
+  .at-selection div { background:rgba(80,140,255,.1); }
+  .at-highlight * { fill:#3b78ff; stroke:#3b78ff; }
+</style></head>
+<body>
+<div id="layout">
+  <div id="score"><div id="at"><div id="msg">Colle un lien Songsterr pour charger une partition.</div></div><div id="lyr"></div></div>
+</div>
+<script src="/alphatab/alphaTab.min.js"></script>
+<script>
+const melos = (() => {
+  let api = null, busy = false, pending = false, busyTimer = 0, rate = 1, duration = 0, fromVideo = false, starts = [], lyr = [], marks = [];
+  // Deux modes : « original » (l'audio YouTube joué par mpv pilote le curseur) et « synth » (synthétiseur MIDI d'alphaTab :
+  // toute la partition est chargée, une seule piste est affichée, mute / solo / volume par piste sont libres).
+  let mode = 'original', shownIdx = 0, posDirty = false, posLast = null, lastBar = -1, playing = false, mix = {solo: new Set(), mute: new Set(), vol: {}};
+  const shown = () => api.score.tracks[shownIdx];
+  // File d'évènements lue par Python (QtWebEngine : interrogée via runJavaScript)
+  const events = [];
+  const emit = (type, data) => events.push({type, data});
+
+  // alphaTab pilote un « média externe » : ici ses ordres (lecture, pause, saut) sont renvoyés à Python,
+  // qui les applique à la vidéo YouTube (une autre vue) ; la position de la vidéo revient par setTime().
+  const handler = {
+    get backingTrackDuration() { return duration; },
+    get playbackRate() { return rate; },
+    set playbackRate(v) { rate = v; if (!fromVideo) emit('rate', v); },
+    masterVolume: 1,
+    seekTo(ms) { /* les sauts viennent de beatMouseDown (plus fiable que ce rappel) */ },
+    play() { if (!fromVideo) emit('play', 1); },
+    pause() { if (!fromVideo) emit('pause', 1); },
+  };
+
+  // Clic sur la partition -> temps correspondant dans l'audio, calculé ICI avec les points de synchro (début de chaque
+  // mesure) : position dans la mesure en proportion de sa durée.
+  function timeOfBeat(beat) {
+    const mb = beat.voice.bar.masterBar, i = mb.index;
+    if (!starts.length || i >= starts.length) return null;
+    const a = starts[i];
+    const b = i + 1 < starts.length ? starts[i + 1] : a + (i > 0 ? a - starts[i - 1] : 2000);
+    const frac = (beat.playbackStart - mb.start) / mb.calculateDuration();
+    return a + (b - a) * Math.max(0, Math.min(1, frac));
+  }
+
+  function load(tex, dark, startsMs, lyricsList, markersList, opts) {
+    opts = opts || {};
+    mode = opts.mode === 'synth' ? 'synth' : 'original';
+    shownIdx = opts.track || 0;
+    lastBar = -1; playing = false; posDirty = false;
+    mix = {solo: new Set(opts.solo || []), mute: new Set(opts.mute || []), vol: Object.assign({}, opts.vol || {})};
+    starts = (startsMs || []).slice();
+    document.body.classList.toggle('dark', !!dark);
+    const scroller = document.getElementById('score');
+    if (api) { try { api.destroy(); } catch (err) { /* déjà détruit */ } }
+    // Nouveau conteneur à chaque chargement : le dessin encore en cours de l'ancienne partition (changement d'instrument
+    // en pleine mise en page) se termine dans l'ancien conteneur, détaché, et ne se superpose plus à la nouvelle.
+    const el = document.createElement('div');
+    el.id = 'at';
+    el.style.visibility = 'hidden';        // jusqu'à la mise en page finale : le premier dessin (provisoire) ne doit pas se voir
+    document.getElementById('at').replaceWith(el);
+    lyr = (lyricsList || []).slice();
+    marks = (markersList || []).slice();
+    phase = 0; nat = tgt = null; busy = true; pending = false;
+    clearTimeout(busyTimer); busyTimer = setTimeout(() => { busy = false; el.style.visibility = 'visible'; }, 15000);   // garde-fou
+    document.getElementById('lyr').innerHTML = '';
+    const me = api = new alphaTab.AlphaTabApi(el, {
+      // pas de chargement « paresseux » : alphaTab ne dessine que les morceaux visibles et, dans QtWebEngine (GPU),
+      // le bas de la partition restait parfois vide ; tout est dessiné d'un coup (quelques centaines de mesures au plus)
+      core: { fontDirectory: '/alphatab/font/', useWorkers: false, tex: false, enableLazyLoading: false },
+      display: {
+        layoutMode: alphaTab.LayoutMode.Page, scale: 1.0,
+        // lignes plus espacées (les notes entre deux cordes, les effets, les paroles et les rythmes respirent)
+        stretchForce: 0, systemPaddingTop: 28, systemPaddingBottom: 78, notationStaffPaddingTop: 22, notationStaffPaddingBottom: 22,
+        effectBandPaddingBottom: 8,
+        resources: Object.assign({ tablatureFont: 'bold 14px Roboto, Arial, sans-serif', graceFont: 'bold 10px Roboto, Arial, sans-serif' },
+          // thème sombre : couleurs d'alphaTab (pas de filtre CSS : trop lourd pour le GPU, cause probable de plantages)
+          dark ? { mainGlyphColor: '#e8e8ee', secondaryGlyphColor: '#a6a6b2', staffLineColor: '#5c5c68',
+                   barSeparatorColor: '#9a9aa6', barNumberColor: '#ff8a98', scoreInfoColor: '#e8e8ee' } : {}),
+      },
+      notation: { notationMode: alphaTab.NotationMode.GuitarPro, elements: { [alphaTab.NotationElement.GuitarTuning]: false },
+                  rhythmMode: alphaTab.TabRhythmMode.Hidden, extendBendArrowsOnTiedNotes: false },
+      player: Object.assign({ scrollMode: alphaTab.ScrollMode.Off, scrollElement: scroller, enableCursor: true, enableAnimatedBeatCursor: true },
+        mode === 'synth'
+          ? { playerMode: alphaTab.PlayerMode.EnabledSynthesizer, soundFont: opts.soundFont || '/alphatab/soundfont/sonivox.sf2' }
+          : { playerMode: alphaTab.PlayerMode.EnabledExternalMedia }),
+    });
+    api.error.on(e => { if (api === me) { el.style.visibility = 'visible'; emit('error', String(e && e.message || e)); } });
+    api.scoreLoaded.on(s => { if (api === me) emit('score', {tracks: s.tracks.map(t => t.name), bars: s.masterBars.length}); });
+    // Fin de dessin : on ne relance JAMAIS un dessin depuis l'évènement lui-même (alphaTab l'émet plusieurs fois et avant
+    // d'avoir fini de poser ses morceaux : un second dessin lancé là se mélangeait au premier = deux partitions
+    // superposées). On attend que tout soit posé (40 ms sans nouvel évènement), puis on enchaîne.
+    let settleTimer = 0;
+    const settle = () => {
+      if (api !== me) return;
+      busy = false; clearTimeout(busyTimer);
+      if (pending) { pending = false; if (phase === 1 && api.score) { applyLayout(); return; } }   // fenêtre redimensionnée pendant le dessin
+      if (fitLayout()) return;
+      drawOverlays(); el.style.visibility = 'visible'; emit('rendered', 1);
+    };
+    api.renderStarted.on(() => { if (api === me) clearTimeout(settleTimer); });
+    api.postRenderFinished.on(() => { if (api !== me) return; clearTimeout(settleTimer); settleTimer = setTimeout(settle, 40); });
+    api.playerReady.on(() => {
+      if (api !== me) return;
+      if (mode === 'synth') { synthReady(opts); return; }
+      api.player.output.handler = handler; emit('player-ready', 1);
+    });
+    api.playedBeatChanged.on(beat => {
+      if (api !== me) return;
+      followBeat(beat);
+      if (mode === 'synth') { const i = beat.voice.bar.index; if (i !== lastBar) { lastBar = i; emit('bar', i); } }
+    });
+    if (mode === 'synth') {
+      api.playerPositionChanged.on(e => { if (api === me) { posDirty = true; posLast = e; } });      // un évènement par bloc audio : on ne garde que le dernier
+      api.playerStateChanged.on(e => { if (api === me) { playing = e.state === 1; emit('state', playing); } });
+      api.playerFinished.on(() => { if (api === me) emit('finished', 1); });
+      api.playbackRangeChanged.on(e => { if (api === me) emit('range', e.playbackRange ? [barOfTick(e.playbackRange.startTick), barOfTick(e.playbackRange.endTick - 1)] : null); });
+    }
+    scroller.addEventListener('wheel', () => { userScrollUntil = performance.now() + 4000; }, {passive: true});
+    scroller.addEventListener('touchmove', () => { userScrollUntil = performance.now() + 4000; }, {passive: true});
+    lastRow = -1;
+    api.tex(tex, [shownIdx]);
+  }
+
+  // Clic sur la partition -> saut dans l'audio. Écouteur à nous (pas l'évènement d'alphaTab) : on retrouve la mesure sous
+  // le curseur, puis le temps à partir des points de synchro. Tout est tracé dans la console de l'appli.
+  function clickScore(e) {
+    if (mode === 'synth' || e.button !== 0) return;         // en synthèse, alphaTab gère lui-même clic (saut) et glissement (sélection)
+    if (!api || !api.boundsLookup) { emit('log', 'clic partition : alphaTab pas prêt'); return; }
+    const r = document.getElementById('at').getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    if (y < 0 || y > r.height || x < 0 || x > r.width) return;
+    let hit = null;
+    for (const sys of api.boundsLookup.staffSystems) {
+      const v = sys.visualBounds;
+      if (y < v.y || y > v.y + v.h) continue;
+      for (const mb of sys.bars) { const b = mb.visualBounds; if (x >= b.x && x <= b.x + b.w) { hit = mb; break; } }
+      if (!hit) { let best = 1e9; for (const mb of sys.bars) { const d = Math.abs(x - (mb.visualBounds.x + mb.visualBounds.w / 2)); if (d < best) { best = d; hit = mb; } } }
+      break;
+    }
+    if (!hit) { emit('log', `clic partition (${x|0},${y|0}) : aucune mesure`); return; }
+    const beat = hit.findBeatAtPos(x);
+    let t = null;
+    if (beat) t = timeOfBeat(beat);
+    else if (hit.index < starts.length) {
+      const a = starts[hit.index], b = hit.index + 1 < starts.length ? starts[hit.index + 1] : a + 2000;
+      t = a + (b - a) * Math.max(0, Math.min(1, (x - hit.realBounds.x) / Math.max(1, hit.realBounds.w)));
+    }
+    emit('log', `clic partition (${x|0},${y|0}) mesure ${hit.index + 1} -> ${t === null ? 'pas de synchro' : (t / 1000).toFixed(2) + ' s'}`);
+    if (t !== null) emit('seek', t);
+  }
+
+  // Rythmes SOUS la tablature, comme dans Guitar Pro : petits bâtons détachés des notes (jamais reliés aux chiffres), avec
+  // leurs barres de croches. Dessinés ici (SVG) car alphaTab relie ses bâtons aux notes.
+  const STEM_GAP = 9, STEM_LEN = 20, BEAM_STEP = 5, BEAM_W = 3;
+  function drawRhythms(svg) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const add = (name, attrs) => { const n = document.createElementNS(NS, name); for (const k in attrs) n.setAttribute(k, attrs[k]); svg.appendChild(n); return n; };
+    const bars = shown().staves[0].bars;
+    bars.forEach(bar => {
+      const beats = bar.voices[0] ? bar.voices[0].beats : [];
+      const groups = new Map();
+      for (const beat of beats) {
+        const b = api.boundsLookup.findBeat(beat);
+        if (!b) continue;
+        const bb = b.barBounds.realBounds, yTop = bb.y + bb.h + STEM_GAP;
+        const item = beat.isRest ? null : {x: b.onNotesX, dur: beat.duration, dots: beat.dots, yTop};
+        const g = Math.floor(beat.playbackStart / 960);
+        if (!groups.has(g)) groups.set(g, []);
+        groups.get(g).push(item);
+      }
+      for (const items of groups.values()) {
+        for (const it of items) {
+          if (!it || it.dur < 2) continue;                       // pas de bâton pour une ronde ni un silence
+          add('line', {x1: it.x, x2: it.x, y1: it.yTop, y2: it.yTop + STEM_LEN, 'stroke-width': 1.3});
+          if (it.dots) add('circle', {cx: it.x + 6, cy: it.yTop + STEM_LEN - 3, r: 1.6});
+        }
+        const lvl = it => (it && it.dur >= 8) ? Math.log2(it.dur) - 2 : 0;
+        const top = Math.max(0, ...items.map(lvl));
+        for (let L = 1; L <= top; L++) {
+          let i = 0;
+          while (i < items.length) {
+            if (lvl(items[i]) < L) { i++; continue; }
+            let j = i;
+            while (j + 1 < items.length && lvl(items[j + 1]) >= L) j++;
+            const y = items[i].yTop + STEM_LEN - (L - 1) * BEAM_STEP;
+            if (j > i) add('line', {x1: items[i].x - 0.8, x2: items[j].x + 0.8, y1: y, y2: y, 'stroke-width': BEAM_W});
+            else {                                                 // croche seule : crochet ; autre niveau : demi-barre
+              const neighbour = i > 0 && items[i - 1] ? -1 : 1;
+              const len = L === 1 && items.filter(x => lvl(x) >= 1).length === 1 ? 9 : 7;
+              add('line', {x1: items[i].x, x2: items[i].x + (L === 1 && items.filter(x => lvl(x) >= 1).length === 1 ? 7 : neighbour * -len), y1: y,
+                           y2: L === 1 && items.filter(x => lvl(x) >= 1).length === 1 ? y - 8 : y, 'stroke-width': BEAM_W - 0.5});
+            }
+            i = j + 1;
+          }
+        }
+      }
+    });
+  }
+
+  const canvas = document.createElement('canvas').getContext('2d');
+  const textWidth = t => { canvas.font = 'italic 600 13px "Segoe UI",Roboto,sans-serif'; return canvas.measureText(t).width; };
+
+  // Mise en page DYNAMIQUE : alphaTab ne sait pas élargir une mesure pour ses paroles, ni garder un bon nombre de mesures
+  // par ligne quand la fenêtre change. Un premier rendu à largeur « naturelle » (stretchForce 0) donne la largeur de
+  // chaque mesure ; ensuite NOUS répartissons les mesures par ligne (layout « modèle » d'alphaTab) selon la largeur
+  // disponible, et on recommence à chaque redimensionnement de la fenêtre.
+  const SPACING = 2.1;                       // aération des notes par rapport à la largeur « naturelle » minimale
+  let phase = 0, nat = null, tgt = null, lastW = 0, resizeTimer = 0;
+  function fitLayout() {
+    if (phase !== 0 || !api || !api.boundsLookup || !api.score) return false;
+    phase = 1;
+    const n = shown().staves[0].bars.length;
+    nat = new Array(n).fill(60);
+    for (const sys of api.boundsLookup.staffSystems) for (const mb of sys.bars) {
+      nat[mb.index] = Math.max(40, mb.visualBounds.w - (mb.isFirstOfLine ? 50 : 0));   // sans la clef de début de ligne
+    }
+    const need = new Array(n).fill(0);
+    for (const [bar, , text] of lyr) if (bar < n) need[bar] += textWidth(text) + 9;
+    tgt = nat.map((w, i) => Math.max(w * SPACING, need[i] ? need[i] + 24 : 0));   // largeur voulue : notes aérées et paroles
+    api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode.UseModelLayout;
+    api.settings.display.stretchForce = 1.0;
+    applyLayout();
+    return true;
+  }
+  function applyLayout() {
+    const track = shown(), bars = track.staves[0].bars, n = bars.length;
+    const scroller = document.getElementById('score');
+    lastW = scroller.clientWidth;
+    const width = lastW - 40 - 50;                                          // marges + clef de début de ligne
+    const layout = [];
+    let count = 0, used = 0;
+    for (let i = 0; i < n; i++) {
+      if (count && used + tgt[i] > width) { layout.push(count); count = 0; used = 0; }
+      count++; used += tgt[i];
+    }
+    if (count) layout.push(count);
+    for (let i = 0; i < n; i++) bars[i].displayScale = tgt[i] / 100;       // poids relatifs dans une ligne
+    track.systemsLayout = layout;
+    busy = true; pending = false;
+    clearTimeout(busyTimer); busyTimer = setTimeout(() => { busy = false; }, 15000);
+    api.updateSettings();
+    api.render();
+  }
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const w = document.getElementById('score').clientWidth;
+      if (phase !== 1 || !api || !api.score || Math.abs(w - lastW) <= 10) return;
+      if (busy) pending = true;            // un dessin est en cours : on recommence juste après, jamais deux à la fois
+      else applyLayout();
+    }, 200);
+  });
+
+  // Étiquettes HTML posées avec les coordonnées calculées par alphaTab : paroles SOUS la tablature (dans la marge
+  // réservée par systemPaddingBottom), titres de section AU-DESSUS de la ligne ; les paroles qui se toucheraient sont
+  // décalées vers la droite.
+  function drawOverlays() {
+    const box = document.getElementById('lyr');
+    box.innerHTML = '';
+    if (!api || !api.boundsLookup || !api.score) return;
+    const at = document.getElementById('at');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'rhy'; svg.setAttribute('width', at.scrollWidth); svg.setAttribute('height', at.scrollHeight);
+    box.appendChild(svg);
+    // batterie (portée de percussion) : alphaTab dessine déjà ses hampes ; nos bâtons ne servent qu'aux tablatures
+    if (!shown().staves[0].isPercussion) { try { drawRhythms(svg); } catch (err) { emit('error', 'rythmes : ' + err); } }
+    const bars = shown().staves[0].bars, frag = document.createDocumentFragment(), lab = [];
+    const first = (bar) => {
+      const beat = bars[bar] && bars[bar].voices[0] && bars[bar].voices[0].beats[0];
+      return beat && api.boundsLookup.findBeat(beat);
+    };
+    for (const [bar, text] of marks) {
+      const b = first(bar);
+      if (!b) continue;
+      const sys = b.barBounds.masterBarBounds.visualBounds, d = document.createElement('div');
+      d.className = 'sec'; d.textContent = text;
+      d.style.left = (b.barBounds.masterBarBounds.visualBounds.x + 4) + 'px'; d.style.top = (sys.y - 24) + 'px';
+      frag.appendChild(d);
+    }
+    for (const [bar, bi, text] of lyr) {
+      const beat = bars[bar] && bars[bar].voices[0] && bars[bar].voices[0].beats[bi];
+      const b = beat && api.boundsLookup.findBeat(beat);
+      if (!b) continue;
+      const sys = b.barBounds.masterBarBounds.visualBounds, d = document.createElement('div');
+      d.className = 'lyr'; d.textContent = text;
+      const rb = b.barBounds.realBounds;
+      lab.push({d, x: b.visualBounds.x, y: Math.round(rb.y + rb.h + STEM_GAP + STEM_LEN + 12), w: textWidth(text)});
+    }
+    let rowY = null, end = 0;                       // anti-chevauchement par ligne
+    for (const l of lab) {
+      if (l.y !== rowY) { rowY = l.y; end = -1e9; }
+      if (l.x < end) l.x = end;
+      end = l.x + l.w + 5;
+      l.d.style.left = l.x + 'px'; l.d.style.top = l.y + 'px';
+      frag.appendChild(l.d);
+    }
+    box.appendChild(frag);
+  }
+
+  // Défilement « intelligent » : la ligne jouée est replacée à ~30 % de la hauteur de la vue quand on change de
+  // ligne (jamais à chaque mesure), avec une animation douce ; une molette/glissement de ta part suspend le suivi 4 s.
+  const FOCUS = 0.33;
+  let lastRow = -1, userScrollUntil = 0, anim = 0, refocus = false, wasPlaying = false;
+  function followBeat(beat) {
+    if (!api || !api.boundsLookup) return;
+    const b = api.boundsLookup.findBeat(beat);
+    if (!b) return;
+    const row = b.barBounds.masterBarBounds.realBounds.y;
+    const forced = refocus;                       // lecture relancée : on revient à l'endroit joué, même si on avait défilé
+    refocus = false;
+    if (row === lastRow && !forced) return;
+    const first = lastRow === -1;
+    lastRow = row;
+    if (!forced && performance.now() < userScrollUntil) return;
+    const el = document.getElementById('score');
+    const target = Math.max(0, row - FOCUS * el.clientHeight);
+    smoothScroll(el, target, first ? 0 : 650);
+  }
+  function smoothScroll(el, target, ms) {
+    cancelAnimationFrame(anim);
+    const from = el.scrollTop, t0 = performance.now();
+    if (!ms) { el.scrollTop = target; return; }
+    const step = now => {
+      const k = Math.min(1, (now - t0) / ms), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      el.scrollTop = from + (target - from) * e;
+      if (k < 1) anim = requestAnimationFrame(step);
+    };
+    anim = requestAnimationFrame(step);
+  }
+  // ---------- mode synthèse ----------
+  const barOfTick = tick => {
+    const mbs = api.score.masterBars;
+    let lo = 0, hi = mbs.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (mbs[mid].start <= tick) lo = mid; else hi = mid - 1; }
+    return lo;
+  };
+  const tickOf = (bar, frac) => {
+    const mb = api.score.masterBars[Math.max(0, Math.min(api.score.masterBars.length - 1, bar))];
+    return mb.start + Math.round(mb.calculateDuration() * Math.max(0, Math.min(0.999, frac || 0)));
+  };
+  function applyMix() {
+    const tr = api.score.tracks;
+    api.changeTrackSolo(tr, false);
+    api.changeTrackMute(tr, false);
+    const pick = set => [...set].map(i => tr[i]).filter(Boolean);
+    if (mix.solo.size) api.changeTrackSolo(pick(mix.solo), true);
+    if (mix.mute.size) api.changeTrackMute(pick(mix.mute), true);
+    tr.forEach((t, i) => api.changeTrackVolume([t], mix.vol[i] === undefined ? 1 : mix.vol[i]));
+  }
+  // Le synthétiseur est prêt (banque de sons chargée, MIDI généré) : on réapplique les réglages de l'interface.
+  function synthReady(o) {
+    try {
+      api.playbackSpeed = o.speed || 1;
+      api.masterVolume = o.volume === undefined ? 1 : o.volume;
+      api.metronomeVolume = o.metronome ? 1 : 0;
+      api.countInVolume = o.countIn ? 1 : 0;
+      api.isLooping = !!o.loop;
+      applyMix();
+      if (o.bar !== undefined && o.bar >= 0) api.tickPosition = tickOf(o.bar, o.frac);
+    } catch (err) { emit('error', 'synthèse : ' + err); }
+    emit('player-ready', 1);
+  }
+  // Même partition, autre piste affichée : pas de rechargement (le synthétiseur continue de jouer), seulement un nouveau
+  // dessin en deux passes (largeurs naturelles, puis mise en page), comme au chargement.
+  function setTrack(idx, lyricsList, markersList) {
+    if (!api || !api.score || !api.score.tracks[idx]) return;
+    shownIdx = idx;
+    lyr = (lyricsList || []).slice(); marks = (markersList || []).slice();
+    const track = shown();
+    for (const b of track.staves[0].bars) b.displayScale = 1;
+    track.systemsLayout = [];
+    phase = 0; nat = tgt = null; busy = true; pending = false; lastRow = -1;
+    document.getElementById('lyr').innerHTML = '';
+    const el = document.getElementById('at'); el.style.visibility = 'hidden';
+    clearTimeout(busyTimer); busyTimer = setTimeout(() => { busy = false; el.style.visibility = 'visible'; }, 15000);
+    api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode.Automatic;
+    api.settings.display.stretchForce = 0;
+    api.updateSettings();
+    api.renderTracks([track]);
+  }
+  function exportMidi() {
+    const file = new alphaTab.midi.MidiFile();
+    const gen = new alphaTab.midi.MidiFileGenerator(api.score, api.settings, new alphaTab.midi.AlphaSynthMidiFileHandler(file, true));
+    gen.generate();
+    const bytes = file.toBinary();
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  const synth = {
+    toggle() { if (api) api.playPause(); },
+    pause() { if (api && api.playerState === 1) api.pause(); },
+    seekMs(ms) { if (api) api.timePosition = Math.max(0, ms); },
+    seekBar(i, frac) { if (api && api.score) api.tickPosition = tickOf(i, frac); },
+    speed(r) { if (api) api.playbackSpeed = r; },
+    volume(v) { if (api) api.masterVolume = v; },
+    metronome(on) { if (api) api.metronomeVolume = on ? 1 : 0; },
+    countIn(on) { if (api) api.countInVolume = on ? 1 : 0; },
+    loop(on) { if (api) api.isLooping = !!on; },
+    clearRange() { if (api) { api.playbackRange = null; api.clearPlaybackRangeHighlight(); emit('range', null); } },
+    mix(solo, mute, vol) {
+      mix = {solo: new Set(solo), mute: new Set(mute), vol: Object.assign({}, vol)};
+      if (api && api.score && api.player && api.player.isReady !== false) { try { applyMix(); } catch (err) { emit('error', 'mixage : ' + err); } }
+    },
+    exportMidi,
+  };
+  // écouteur au niveau du document (phase de capture) : aucun élément ne peut le masquer
+  document.addEventListener('mousedown', e => { emit('log', `mousedown (${e.clientX|0},${e.clientY|0}) sur ${e.target.tagName}.${(e.target.className && e.target.className.baseVal !== undefined ? e.target.className.baseVal : e.target.className) || ''}`); try { clickScore(e); } catch (err) { emit('log', 'clic partition : erreur ' + err); } }, true);
+  return {
+    load, handler, setTrack, synth,
+    setDuration(ms) { duration = ms; },
+    // Nouveaux points de synchro (ms de début de chaque mesure dans l'audio) sans recharger ni redessiner la partition
+    setSync(list) {
+      starts = list.slice();
+      if (!api || !api.score) return;
+      api.score.applyFlatSyncPoints(list.map((ms, i) => ({barIndex: i, barOccurence: 0, barPosition: 0,
+                                                          millisecondOffset: Math.max(0, Math.round(ms))})));
+      api.loadMidiForScore();
+    },
+    // état de la vidéo, envoyé par Python toutes les ~50 ms
+    sync(ms, playing, r) {   // vitesse r : cf handler.playbackRate
+      if (!api || !api.player || !api.player.output) return;
+      if (playing && !wasPlaying) { refocus = true; userScrollUntil = 0; }
+      wasPlaying = playing;
+      fromVideo = true;
+      try {
+        if (r && r !== rate) rate = r;
+        if (playing && api.playerState !== 1) api.play();
+        if (!playing && api.playerState === 1) api.pause();
+        if (api.player.output.updatePosition) api.player.output.updatePosition(ms);
+      } finally { fromVideo = false; }
+    },
+    play() { api && api.playPause(); },
+    seekBar(i) { const mb = api && api.score && api.score.masterBars[i]; if (mb) { api.tickPosition = mb.start; } },
+    setTracks(idx) { if (api && api.score) api.renderTracks(idx.map(i => api.score.tracks[i])); },
+    setScale(s) { if (api) { api.settings.display.scale = s; busy = true; api.updateSettings(); api.render(); } },
+    drain() {
+      if (posDirty && api && api.score && mode === 'synth') {          // position du synthétiseur : toujours la plus récente
+        posDirty = false;
+        const bar = barOfTick(posLast.currentTick), mb = api.score.masterBars[bar];
+        events.push({type: 'pos', data: {ms: posLast.currentTime, dur: posLast.endTime, bar, frac: (posLast.currentTick - mb.start) / mb.calculateDuration()}});
+      }
+      const e = events.splice(0); return JSON.stringify(e);
+    },
+    _api: () => api,
+  };
+})();
+</script>
+</body></html>

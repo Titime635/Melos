@@ -52,6 +52,8 @@ _DEFAULTS: dict[str, Any] = {
         "force_system_volume": True,
         "system_volume_keyword": "NUX NMP-03",
         "blocksize": 256,         # taille du tampon audio en échantillons (page Réglages)
+        "host_api": "auto",       # API audio Windows : "auto" (WASAPI de préférence), ou le nom exact (MME, ASIO...)
+        "wasapi_exclusive": False,  # WASAPI exclusif : latence minimale, mais la carte n'est plus partagée
     },
     # Port MIDI : "auto" cherche le Mighty tout seul ; "manual" impose les ports choisis (page Réglages)
     "midi": {
@@ -61,6 +63,19 @@ _DEFAULTS: dict[str, Any] = {
     },
     "ui": {
         "theme": "auto",      # "auto" (celui de Windows) | "light" | "dark"
+    },
+    # Page Partition (tablature Songsterr + vidéo YouTube)
+    "tabs": {
+        "url": "",            # dernier lien Songsterr chargé
+        "track": 0,           # numéro de piste affichée (position dans la liste, batterie exclue)
+        "video": "",          # identifiant YouTube choisi pour la synchro ("" = première disponible)
+        "scale": 1.0,         # zoom de la partition
+        "country": "FR",      # code pays : ne propose que les vidéos disponibles là
+        "stem_map": {},       # association piste de la partition -> piste audio, par morceau : {songId: {partId: [pistes]}}
+        "mode": "original",   # "original" (enregistrement YouTube) | "synth" (synthèse MIDI de la partition)
+        "synth": {"metronome": False, "count_in": False, "loop": False},
+        "soundfont": "auto",  # banque de sons de la synthèse : « auto » (la meilleure installée) ou un nom de fichier .sf2
+        "synth_mix": {},      # solo / mute / volumes des pistes en synthèse, par morceau : {songId: {"solo": [partId], "mute": [...], "vol": {partId: 0-1.5}}}
     },
     # Tempo et quantification (partagés entre le looper et la batterie, cf state/transport_state.py)
     "transport": {

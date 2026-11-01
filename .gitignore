@@ -90,3 +90,17 @@ app_settings.json
 setlists.json
 ui/preset_names.json
 ui/tuner_calibration.json
+tabs_cache/
+web_profile/
+melos_lyrics.txt
+
+# Fichiers volumineux / téléchargés par les scripts de tools/ (ne pas versionner)
+# libmpv (115 Mo) : tools/fetch_libmpv.py
+mpv-2.dll
+_libmpv_tmp/
+# alphaTab, police Bravura, banques de sons : tools/fetch_alphatab.py et tools/fetch_soundfonts.py
+tabs/vendor/
+*.sf2
+*.sf3
+# sorties de tools/songsterr_probe.py
+probe_out/

@@ -61,8 +61,22 @@ def start_freeze_watchdog(crash_fh) -> QTimer:
     return timer
 
 
+def warn_missing_deps():
+    """Fichiers téléchargés (hors git) absents, p. ex. après un clone sur un autre ordinateur : on dit comment les installer."""
+    try:
+        from tools.setup_deps import missing_deps
+        missing = missing_deps()
+    except Exception:
+        return
+    if missing:
+        logging.getLogger("melos").warning(
+            "Fichiers manquants : %s. Lance « python tools/setup_deps.py » pour les installer.", ", ".join(missing))
+        print("Fichiers manquants :", ", ".join(missing), "\n -> lance : python tools/setup_deps.py")
+
+
 def main():
     crash_fh = setup_diagnostics()
+    warn_missing_deps()
     try:
         print("Inputs :", mido.get_input_names())
         print("Outputs:", mido.get_output_names())

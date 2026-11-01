@@ -27,6 +27,7 @@ from ui.tempo_panel import TempoPanel
 from ui.setlist_panel import SetlistPanel
 from ui.dashboard_interface import DashboardInterface
 from ui.settings_interface import SettingsInterface
+from ui.tab_interface import TabInterface
 from ui.shortcuts_interface import ShortcutsInterface
 from ui.theme import apply_theme
 from settings import load_settings
@@ -107,6 +108,9 @@ class HomeInterface(QScrollArea):
 class MainWindow(FluentWindow):
     def __init__(self, state: AmpState, sender: MidiSender, shortcuts: ShortcutManager, monitor=None):
         super().__init__()
+        # Pas d'effet Mica : une fois la vue web (onglet Partition) affichée, Qt compose la fenêtre avec le GPU et les
+        # zones « transparentes » du Mica (barre latérale des onglets) deviennent noires en thème clair. Fond uni à la place.
+        self.setMicaEffectEnabled(False)
         self.setWindowTitle("Mighty Control")
         self.resize(1150, 900)
 
@@ -130,6 +134,9 @@ class MainWindow(FluentWindow):
 
         self.home_interface = HomeInterface(state, sender, self._loop_engine, self._audio)
         self.addSubInterface(self.home_interface, FluentIcon.VIEW, "Classique")
+
+        self.tab_interface = TabInterface()
+        self.addSubInterface(self.tab_interface, FluentIcon.MUSIC, "Partition")
 
         # --- Annuler / rétablir : une pile par page (cf state/undo.py) ---
         self._play_stack = UndoStack(self._apply_play_entry, parent=self)   # Dashboard + Classique
@@ -326,4 +333,5 @@ class MainWindow(FluentWindow):
         QApplication.instance().removeEventFilter(self._focus_guard)
         self.home_interface.loop_panel.stop()
         self.dashboard_interface.stop()
+        self.tab_interface.stop()
         super().closeEvent(event)
