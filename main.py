@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
 from audio import portaudio_utils
+from editor.setup import build_editor
 from midi.connection_monitor import ConnectionMonitor
 from midi import port_graveyard
 from midi.listener import MidiListener
@@ -95,6 +96,7 @@ def main():
     listener = MidiListener()
     sender = MidiSender()
     monitor = ConnectionMonitor(listener, sender)
+    editor = build_editor(sender, listener)   # (service, bibliothèque) de l'onglet Éditeur
 
     # Câblage des signaux MIDI -> état (une seule fois, jamais refait)
     listener.preset_changed.connect(state.on_preset_changed)
@@ -105,6 +107,7 @@ def main():
     listener.tuner_string.connect(state.on_tuner_string)
     listener.drum_cc_received.connect(state.on_drum_cc)
     listener.start()
+    state.preset_changed.connect(editor[0].on_amp_preset_changed)   # un preset change : l'éditeur renvoie sa copie de travail
 
     # Tentative synchrone AVANT de créer la fenêtre : si le Mighty est branché,
     # l'UI naît directement "connectée" (pas de flash "déconnecté" d'une seconde).
@@ -115,15 +118,17 @@ def main():
         # Renvoie au device les réglages restaurés (le device peut avoir démarré
         # sur autre chose)
         push_state(state, sender)
+        editor[0].refresh()   # lit les 7 emplacements (et en garde une sauvegarde)
 
     # Les reconnexions ultérieures repoussent l'état via DeviceSync
     sync = DeviceSync(state, sender)  # noqa: F841 (garde la référence)
     monitor.connected_changed.connect(state.set_connected, Qt.QueuedConnection)
+    monitor.connected_changed.connect(editor[0].on_connection_changed, Qt.QueuedConnection)
     monitor.start()
 
     # --- UI ---
     shortcuts = ShortcutManager()  # touches globales : aucune par défaut, réglées dans l'onglet Raccourcis
-    window = MainWindow(state, sender, shortcuts, monitor)
+    window = MainWindow(state, sender, shortcuts, monitor, editor)
     window.show()
 
     exit_code = app.exec()

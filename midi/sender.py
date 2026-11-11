@@ -87,6 +87,14 @@ class MidiSender:
         payload = protocol.build_drum_sysex(enabled, style, level, bass, middle, treble, bpm)
         self._send(mido.Message("sysex", data=payload))
 
+    # --- Envois bruts (éditeur de presets, cf editor/amp_io.py) ---
+    def send_cc(self, control: int, value: int) -> bool:
+        return self._send(mido.Message("control_change", control=control, value=value))
+
+    def send_sysex(self, data) -> bool:
+        """`data` : octets SysEx SANS F0/F7."""
+        return self._send(mido.Message("sysex", data=list(data)))
+
     def _send_cc(self, control: int, value: int):
         self._send(mido.Message("control_change", control=control, value=value))
 

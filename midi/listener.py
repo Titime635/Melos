@@ -35,6 +35,11 @@ class MidiListener(QThread):
         self._port = None
         self._broken = False
         self._lock = threading.Lock()
+        self._raw_handlers = []   # fonctions appelées (dans CE thread) avec chaque message mido reçu, cf editor/amp_io.py
+
+    def add_raw_handler(self, fn):
+        """Abonne `fn(msg)` à tous les messages reçus (SysEx compris). `fn` doit être rapide et ne pas toucher à l'UI."""
+        self._raw_handlers.append(fn)
 
     # --- Cycle de vie du port (appelé par le ConnectionMonitor) ---
 
@@ -90,6 +95,11 @@ class MidiListener(QThread):
             self.msleep(5)  # évite de saturer le CPU
 
     def _dispatch(self, msg: mido.Message):
+        for fn in list(self._raw_handlers):
+            try:
+                fn(msg)
+            except Exception:
+                pass   # un abonné défaillant ne doit pas faire perdre les messages aux autres
         if msg.type == "program_change":
             self.preset_changed.emit(msg.program)
 
@@ -112,9 +122,8 @@ class MidiListener(QThread):
             ):
                 self.drum_cc_received.emit(msg.control, msg.value)
 
-        # TODO: gérer les messages sysex entrants si un jour on a besoin
-        # de lire une confirmation autre que le tuner (actuellement pas
-        # nécessaire, cf protocol_notes.md)
+        # Les SysEx entrants (lecture des presets, accusés de sauvegarde) sont lus par l'éditeur via
+        # add_raw_handler (cf editor/amp_io.py).
 
     def stop(self):
         self._running = False

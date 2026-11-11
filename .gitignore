@@ -93,6 +93,10 @@ ui/tuner_calibration.json
 tabs_cache/
 web_profile/
 melos_lyrics.txt
+probe_presets_out/
+preset_library/
+preset_backups/
+preset_slot_links.json
 
 # Fichiers volumineux / téléchargés par les scripts de tools/ (ne pas versionner)
 # libmpv (115 Mo) : tools/fetch_libmpv.py

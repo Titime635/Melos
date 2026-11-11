@@ -1,7 +1,7 @@
 """
 Fenêtre principale.
 
-Deux onglets : "Dashboard" (positionnement libre des modules, cf
+Onglets : "Dashboard" (positionnement libre des modules, cf
 ui/dashboard_interface.py) est la vue principale désormais. "Classique"
 garde l'ancien affichage empilé tel quel, comme vue de secours/référence —
 pas de conflit entre les deux : ce sont des instances de panneaux séparées
@@ -28,6 +28,7 @@ from ui.setlist_panel import SetlistPanel
 from ui.dashboard_interface import DashboardInterface
 from ui.settings_interface import SettingsInterface
 from ui.tab_interface import TabInterface
+from ui.editor_interface import EditorInterface
 from ui.shortcuts_interface import ShortcutsInterface
 from ui.theme import apply_theme
 from settings import load_settings
@@ -106,7 +107,7 @@ class HomeInterface(QScrollArea):
 
 
 class MainWindow(FluentWindow):
-    def __init__(self, state: AmpState, sender: MidiSender, shortcuts: ShortcutManager, monitor=None):
+    def __init__(self, state: AmpState, sender: MidiSender, shortcuts: ShortcutManager, monitor=None, editor=None):
         super().__init__()
         # Pas d'effet Mica : une fois la vue web (onglet Partition) affichée, Qt compose la fenêtre avec le GPU et les
         # zones « transparentes » du Mica (barre latérale des onglets) deviennent noires en thème clair. Fond uni à la place.
@@ -137,6 +138,13 @@ class MainWindow(FluentWindow):
 
         self.tab_interface = TabInterface()
         self.addSubInterface(self.tab_interface, FluentIcon.MUSIC, "Partition")
+
+        # Éditeur de presets du Mighty + bibliothèque (cf editor/ et ui/editor_interface.py)
+        self._editor_service = editor[0] if editor else None
+        self.editor_interface = None
+        if editor:
+            self.editor_interface = EditorInterface(editor[0], editor[1], state)
+            self.addSubInterface(self.editor_interface, FluentIcon.EDIT, "Éditeur")
 
         # --- Annuler / rétablir : une pile par page (cf state/undo.py) ---
         self._play_stack = UndoStack(self._apply_play_entry, parent=self)   # Dashboard + Classique
@@ -236,6 +244,11 @@ class MainWindow(FluentWindow):
         page = self.stackedWidget.currentWidget()
         if page is self.settings_interface:
             return ""   # rien à annuler ici : les réglages s'appliquent tout de suite
+        if page is self.editor_interface:
+            text = self.editor_interface.undo_redo(redo)     # historique propre à l'éditeur (copies de travail)
+            InfoBar.info(title=text, content="", isClosable=False, duration=1500,
+                         position=InfoBarPosition.BOTTOM, parent=self)
+            return text
         if page is self.shortcuts_interface:
             stack, accept = self._shortcuts_stack, None
         else:
@@ -334,4 +347,6 @@ class MainWindow(FluentWindow):
         self.home_interface.loop_panel.stop()
         self.dashboard_interface.stop()
         self.tab_interface.stop()
+        if self._editor_service is not None:
+            self._editor_service.shutdown()
         super().closeEvent(event)
