@@ -2,34 +2,73 @@
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-  :root { --bg:#fff; --fg:#1b1b1f; --muted:#6b6b76; }
-  body.dark { --bg:#1e1f24; --fg:#e8e8ee; --muted:#9a9aa6; }
+  :root { --z:1; --bg:#fff; --fg:#202228; --muted:#646876; --thumb:#c6c9d3; --accent:#2d7db0; --amber:#c4832a; --staff:#c3c7d1; }
+  body.dark { --bg:#1a1b1e; --fg:#e6e7ec; --muted:#9c9ea9; --thumb:#4a4c56; --accent:#6aa8d2; --amber:#dba65c; --staff:#4a4d58; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px "Segoe UI",sans-serif; }
   #layout { display:flex; flex-direction:column; height:100%; }
   #score { flex:1; overflow-x:hidden; overflow-y:auto; position:relative; }
   #at { position:relative; }
-  #lyr { position:absolute; left:0; top:0; width:100%; height:0; pointer-events:none; }
+  #lyr { position:absolute; left:0; top:0; width:100%; height:0; pointer-events:none; z-index:5; }
   #rhy { position:absolute; left:0; top:0; overflow:visible; pointer-events:none; }
   #rhy line, #rhy circle { stroke:var(--fg); }
   #rhy circle { fill:var(--fg); }
-  .sec { position:absolute; white-space:nowrap; font:700 12px "Segoe UI",Roboto,sans-serif; color:var(--fg);
-         border:1.5px solid var(--fg); border-radius:4px; padding:0 6px; line-height:17px; background:var(--bg); }
-  .lyr { position:absolute; white-space:nowrap; font:italic 600 13px "Segoe UI",Roboto,sans-serif; color:var(--fg);
+  .sec { position:absolute; white-space:nowrap; font:600 calc(12px * var(--z)) "Segoe UI",Roboto,sans-serif; letter-spacing:.2px;
+         color:var(--accent); border:1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius:calc(6px * var(--z)); padding:0 calc(8px * var(--z));
+         line-height:calc(18px * var(--z)); background:color-mix(in srgb, var(--accent) 14%, var(--bg)); }
+  .pre { position:absolute; display:flex; align-items:center; gap:calc(5px * var(--z)); white-space:nowrap; pointer-events:auto; cursor:grab; height:calc(20px * var(--z)); padding:0 calc(8px * var(--z)) 0 calc(6px * var(--z));
+         border-radius:calc(10px * var(--z)); font:600 calc(11px * var(--z)) "Segoe UI",Roboto,sans-serif; letter-spacing:.2px; color:var(--fg);
+         background:color-mix(in srgb, var(--pc) 20%, transparent); border:1px solid color-mix(in srgb, var(--pc) 60%, transparent); }
+  .pre b { display:block; width:calc(8px * var(--z)); height:calc(8px * var(--z)); border-radius:50%; background:var(--pc); }
+  .pre.warn { border-style:dashed; }
+  .dropl { position:absolute; pointer-events:none; width:3px; margin-left:-1px; border-radius:2px; background:var(--accent); }
+  .pre.miss { --pc:var(--amber); }
+  .pre.miss span { color:var(--amber); }
+  .pre:hover, .bkm:hover { filter:brightness(1.15); }
+  .drop { position:absolute; pointer-events:none; border:2px dashed var(--accent); border-radius:8px; box-sizing:border-box;
+          background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .rng { position:absolute; pointer-events:none; background:color-mix(in srgb, var(--accent) 15%, transparent);
+         border-top:2px solid color-mix(in srgb, var(--accent) 55%, transparent); border-bottom:2px solid color-mix(in srgb, var(--accent) 55%, transparent); box-sizing:border-box; }
+  .rng.a { border-left:3px solid var(--accent); border-top-left-radius:6px; border-bottom-left-radius:6px; }
+  .rng.b { border-right:3px solid var(--accent); border-top-right-radius:6px; border-bottom-right-radius:6px; }
+  .esc { position:absolute; pointer-events:none; border-radius:6px; background:color-mix(in srgb, var(--accent) 13%, transparent); }
+  .esn { position:absolute; pointer-events:none; box-sizing:border-box; border:2px solid var(--accent); border-radius:6px;
+         background:color-mix(in srgb, var(--accent) 22%, transparent); }
+  .mod { position:absolute; pointer-events:none; width:calc(9px * var(--z)); height:calc(9px * var(--z)); border-radius:50%; background:var(--amber);
+         box-shadow:0 0 0 2px color-mix(in srgb, var(--amber) 30%, transparent); }
+  body.editing #at { cursor:cell; }
+  #frozen { position:absolute; left:0; top:0; z-index:4; pointer-events:none; background:var(--bg); }
+  .ghost { position:fixed; z-index:50; pointer-events:none; opacity:.92; box-shadow:0 4px 14px rgba(0,0,0,.35); }
+  .bkm { position:absolute; display:flex; align-items:center; gap:calc(5px * var(--z)); white-space:nowrap; pointer-events:auto; cursor:grab;
+         font:600 calc(12px * var(--z)) "Segoe UI",Roboto,sans-serif; color:var(--amber); }
+  .bkm i { display:block; width:calc(10px * var(--z)); height:calc(16px * var(--z)); background:var(--amber); clip-path:polygon(0 0,100% 0,100% 100%,50% 72%,0 100%); }
+  .lyr { position:absolute; white-space:nowrap; font:italic 600 calc(13px * var(--z)) "Segoe UI",Roboto,sans-serif; color:var(--fg);
          transform:translateX(-2px); }
-  #msg { padding:24px; color:var(--muted); }
-  .at-cursor-bar { background:rgba(80,140,255,.18); }
-  .at-cursor-beat { background:rgba(80,140,255,.9); width:3px; }
-  .at-selection div { background:rgba(80,140,255,.1); }
-  .at-highlight * { fill:#3b78ff; stroke:#3b78ff; }
+  #msg { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; height:62vh;
+         padding:24px; text-align:center; color:var(--muted); }
+  #msg .ico { font-size:46px; line-height:1; opacity:.55; }
+  #msg .t { font:600 18px "Segoe UI",sans-serif; color:var(--fg); opacity:.85; }
+  #msg .s { max-width:360px; line-height:1.45; }
+  #score::-webkit-scrollbar { width:14px; }
+  #score::-webkit-scrollbar-track { background:transparent; }
+  #score::-webkit-scrollbar-thumb { background:var(--thumb); border-radius:7px; border:4px solid transparent; background-clip:padding-box; min-height:48px; }
+  #score::-webkit-scrollbar-thumb:hover { background:var(--muted); background-clip:padding-box; }
+  .at-cursor-bar { background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .at-cursor-beat { background:var(--accent); width:2px; border-radius:1px; }
+  .at-selection div { background:color-mix(in srgb, var(--accent) 16%, transparent); }
+  .at-highlight * { fill:var(--accent); stroke:var(--accent); }
 </style></head>
 <body>
 <div id="layout">
-  <div id="score"><div id="at"><div id="msg">Colle un lien Songsterr pour charger une partition.</div></div><div id="lyr"></div></div>
+  <div id="score"><div id="at"><div id="msg"><div class="ico">♪</div><div class="t">Aucune partition</div><div class="s">Cherche un morceau par son nom ou colle un lien Songsterr, puis valide avec Entrée. Tes morceaux récents et favoris sont dans « Morceaux ».</div></div></div><div id="lyr"></div></div>
 </div>
 <script src="/alphatab/alphaTab.min.js"></script>
 <script>
 const melos = (() => {
-  let api = null, busy = false, pending = false, busyTimer = 0, rate = 1, duration = 0, fromVideo = false, starts = [], lyr = [], marks = [];
+  let api = null, busy = false, pending = false, busyTimer = 0, rate = 1, duration = 0, fromVideo = false, starts = [], lyr = [], marks = [], bookmarks = [], presets = [], rangeBars = null, editOn = false, esel = null, edited = [], keepScroll = null, curVoice = 0, loopOn = false, Z = 1;
+  function setZ(z) {
+    Z = z > 0 ? z : 1; document.documentElement.style.setProperty('--z', Z);
+    STEM_GAP = 9 * Z; STEM_LEN = 20 * Z; BEAM_STEP = 5 * Z; BEAM_W = 3 * Z;
+  }
   // Deux modes : « original » (l'audio YouTube joué par mpv pilote le curseur) et « synth » (synthétiseur MIDI d'alphaTab :
   // toute la partition est chargée, une seule piste est affichée, mute / solo / volume par piste sont libres).
   let mode = 'original', shownIdx = 0, posDirty = false, posLast = null, lastBar = -1, playing = false, mix = {solo: new Set(), mute: new Set(), vol: {}};
@@ -64,12 +103,13 @@ const melos = (() => {
   function load(tex, dark, startsMs, lyricsList, markersList, opts) {
     opts = opts || {};
     mode = opts.mode === 'synth' ? 'synth' : 'original';
-    shownIdx = opts.track || 0;
+    shownIdx = opts.track || 0; setZ(opts.scale);
     lastBar = -1; playing = false; posDirty = false;
     mix = {solo: new Set(opts.solo || []), mute: new Set(opts.mute || []), vol: Object.assign({}, opts.vol || {})};
-    starts = (startsMs || []).slice();
+    starts = (startsMs || []).slice(); clk.beats = null; clk.lastT = -1;
     document.body.classList.toggle('dark', !!dark);
     const scroller = document.getElementById('score');
+    unfreeze();
     if (api) { try { api.destroy(); } catch (err) { /* déjà détruit */ } }
     // Nouveau conteneur à chaque chargement : le dessin encore en cours de l'ancienne partition (changement d'instrument
     // en pleine mise en page) se termine dans l'ancien conteneur, détaché, et ne se superpose plus à la nouvelle.
@@ -79,6 +119,10 @@ const melos = (() => {
     document.getElementById('at').replaceWith(el);
     lyr = (lyricsList || []).slice();
     marks = (markersList || []).slice();
+    bookmarks = (opts.bookmarks || []).slice();
+    presets = (opts.presets || []).slice();
+    rangeBars = opts.range ? opts.range.slice() : null;
+    edited = (opts.edited || []).slice(); editOn = !!opts.edit; curVoice = opts.voice | 0; loopOn = !!opts.loopMode; esel = null; document.body.classList.toggle('editing', editOn);
     phase = 0; nat = tgt = null; busy = true; pending = false;
     clearTimeout(busyTimer); busyTimer = setTimeout(() => { busy = false; el.style.visibility = 'visible'; }, 15000);   // garde-fou
     document.getElementById('lyr').innerHTML = '';
@@ -87,23 +131,27 @@ const melos = (() => {
       // le bas de la partition restait parfois vide ; tout est dessiné d'un coup (quelques centaines de mesures au plus)
       core: { fontDirectory: '/alphatab/font/', useWorkers: false, tex: false, enableLazyLoading: false },
       display: {
-        layoutMode: alphaTab.LayoutMode.Page, scale: 1.0,
+        layoutMode: alphaTab.LayoutMode.Page, scale: opts.scale || 1.0,
         // lignes plus espacées (les notes entre deux cordes, les effets, les paroles et les rythmes respirent)
         stretchForce: 0, systemPaddingTop: 28, systemPaddingBottom: 78, notationStaffPaddingTop: 22, notationStaffPaddingBottom: 22,
         effectBandPaddingBottom: 8,
         resources: Object.assign({ tablatureFont: 'bold 14px Roboto, Arial, sans-serif', graceFont: 'bold 10px Roboto, Arial, sans-serif' },
           // thème sombre : couleurs d'alphaTab (pas de filtre CSS : trop lourd pour le GPU, cause probable de plantages)
-          dark ? { mainGlyphColor: '#e8e8ee', secondaryGlyphColor: '#a6a6b2', staffLineColor: '#5c5c68',
-                   barSeparatorColor: '#9a9aa6', barNumberColor: '#ff8a98', scoreInfoColor: '#e8e8ee' } : {}),
+          // lignes de portée discrètes, numéros de mesure dans un bleu-gris doux (plus de rouge sur gris)
+          dark ? { mainGlyphColor: '#e6e7ec', secondaryGlyphColor: '#9fa2ae', staffLineColor: '#4a4d58',
+                   barSeparatorColor: '#6b6e7b', barNumberColor: '#7f95b3', scoreInfoColor: '#e6e7ec' }
+               : { mainGlyphColor: '#202228', secondaryGlyphColor: '#5d616e', staffLineColor: '#c3c7d1',
+                   barSeparatorColor: '#8a90a0', barNumberColor: '#7088aa', scoreInfoColor: '#202228' }),
       },
       notation: { notationMode: alphaTab.NotationMode.GuitarPro, elements: { [alphaTab.NotationElement.GuitarTuning]: false },
                   rhythmMode: alphaTab.TabRhythmMode.Hidden, extendBendArrowsOnTiedNotes: false },
-      player: Object.assign({ scrollMode: alphaTab.ScrollMode.Off, scrollElement: scroller, enableCursor: true, enableAnimatedBeatCursor: true },
+      player: Object.assign({ scrollMode: alphaTab.ScrollMode.Off, scrollElement: scroller, enableCursor: true, enableAnimatedBeatCursor: true,
+                              enableUserInteraction: false },   // clics et sélections sont gérés par la page (seek, zone de boucle, édition)
         mode === 'synth'
           ? { playerMode: alphaTab.PlayerMode.EnabledSynthesizer, soundFont: opts.soundFont || '/alphatab/soundfont/sonivox.sf2' }
           : { playerMode: alphaTab.PlayerMode.EnabledExternalMedia }),
     });
-    api.error.on(e => { if (api === me) { el.style.visibility = 'visible'; emit('error', String(e && e.message || e)); } });
+    api.error.on(e => { if (api === me) { el.style.visibility = 'visible'; emit('log', 'erreur alphaTab : ' + String(e && e.stack || e)); emit('error', String(e && e.message || e)); } });
     api.scoreLoaded.on(s => { if (api === me) emit('score', {tracks: s.tracks.map(t => t.name), bars: s.masterBars.length}); });
     // Fin de dessin : on ne relance JAMAIS un dessin depuis l'évènement lui-même (alphaTab l'émet plusieurs fois et avant
     // d'avoir fini de poser ses morceaux : un second dessin lancé là se mélangeait au premier = deux partitions
@@ -115,6 +163,8 @@ const melos = (() => {
       if (pending) { pending = false; if (phase === 1 && api.score) { applyLayout(); return; } }   // fenêtre redimensionnée pendant le dessin
       if (fitLayout()) return;
       drawOverlays(); el.style.visibility = 'visible'; emit('rendered', 1);
+      if (keepScroll !== null) { scroller.scrollTop = keepScroll; keepScroll = null; }
+      unfreeze();
     };
     api.renderStarted.on(() => { if (api === me) clearTimeout(settleTimer); });
     api.postRenderFinished.on(() => { if (api !== me) return; clearTimeout(settleTimer); settleTimer = setTimeout(settle, 40); });
@@ -132,7 +182,7 @@ const melos = (() => {
       api.playerPositionChanged.on(e => { if (api === me) { posDirty = true; posLast = e; } });      // un évènement par bloc audio : on ne garde que le dernier
       api.playerStateChanged.on(e => { if (api === me) { playing = e.state === 1; emit('state', playing); } });
       api.playerFinished.on(() => { if (api === me) emit('finished', 1); });
-      api.playbackRangeChanged.on(e => { if (api === me) emit('range', e.playbackRange ? [barOfTick(e.playbackRange.startTick), barOfTick(e.playbackRange.endTick - 1)] : null); });
+      api.playbackRangeChanged.on(e => { if (api === me) { if (e.playbackRange) { const lo = barOfTick(e.playbackRange.startTick), hi = barOfTick(e.playbackRange.endTick - 1); rangeBars = [lo, hi]; emit('range', rangeInfo(lo, hi)); } else { rangeBars = null; emit('range', null); } } });
     }
     scroller.addEventListener('wheel', () => { userScrollUntil = performance.now() + 4000; }, {passive: true});
     scroller.addEventListener('touchmove', () => { userScrollUntil = performance.now() + 4000; }, {passive: true});
@@ -140,36 +190,236 @@ const melos = (() => {
     api.tex(tex, [shownIdx]);
   }
 
-  // Clic sur la partition -> saut dans l'audio. Écouteur à nous (pas l'évènement d'alphaTab) : on retrouve la mesure sous
-  // le curseur, puis le temps à partir des points de synchro. Tout est tracé dans la console de l'appli.
-  function clickScore(e) {
-    if (mode === 'synth' || e.button !== 0) return;         // en synthèse, alphaTab gère lui-même clic (saut) et glissement (sélection)
-    if (!api || !api.boundsLookup) { emit('log', 'clic partition : alphaTab pas prêt'); return; }
-    const r = document.getElementById('at').getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    if (y < 0 || y > r.height || x < 0 || x > r.width) return;
-    let hit = null;
+  // Rechargement pour une modification : l'ancien dessin reste affiché (copie figée) pendant que alphaTab redessine et remet en page
+  // en deux temps ; on ne voit plus la partition se vider, se recaler ni sauter. Retirée dès que la nouvelle est prête.
+  function freeze() {
+    unfreeze();
+    const at = document.getElementById('at');
+    if (!at || !at.querySelector('svg')) return;
+    const h = at.offsetHeight, f = at.cloneNode(true);
+    f.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));       // pas d'identifiants en double
+    f.id = 'frozen'; f.style.width = at.offsetWidth + 'px'; f.style.height = h + 'px';
+    at.style.minHeight = h + 'px';
+    at.parentNode.insertBefore(f, at);
+  }
+  function unfreeze() {
+    const f = document.getElementById('frozen'); if (f) f.remove();
+    const at = document.getElementById('at'); if (at) at.style.minHeight = '';
+  }
+
+  // Mesure sous un point de la fenêtre (coordonnées client). `loose` : tolère un point un peu hors des lignes (glisser-déposer,
+  // clic droit) en prenant la ligne la plus proche (à moins de 70 px).
+  function barAtClient(cx, cy, loose) {
+    if (!api || !api.boundsLookup) return null;
+    const r = document.getElementById('at').getBoundingClientRect(), x = cx - r.left, y = cy - r.top;
+    if (!loose && (y < 0 || y > r.height || x < 0 || x > r.width)) return null;
+    let sysHit = null, best = 1e9;
     for (const sys of api.boundsLookup.staffSystems) {
-      const v = sys.visualBounds;
-      if (y < v.y || y > v.y + v.h) continue;
-      for (const mb of sys.bars) { const b = mb.visualBounds; if (x >= b.x && x <= b.x + b.w) { hit = mb; break; } }
-      if (!hit) { let best = 1e9; for (const mb of sys.bars) { const d = Math.abs(x - (mb.visualBounds.x + mb.visualBounds.w / 2)); if (d < best) { best = d; hit = mb; } } }
-      break;
+      const v = sys.visualBounds, d = y < v.y ? v.y - y : y > v.y + v.h ? y - v.y - v.h : 0;
+      if (d < best) { best = d; sysHit = sys; }
     }
-    if (!hit) { emit('log', `clic partition (${x|0},${y|0}) : aucune mesure`); return; }
+    if (!sysHit || best > (loose ? 70 : 0)) return null;
+    let hit = null;
+    for (const mb of sysHit.bars) { const b = mb.visualBounds; if (x >= b.x && x <= b.x + b.w) { hit = mb; break; } }
+    if (!hit) { let bd = 1e9; for (const mb of sysHit.bars) { const d = Math.abs(x - (mb.visualBounds.x + mb.visualBounds.w / 2)); if (d < bd) { bd = d; hit = mb; } } }
+    return hit ? {mb: hit, x, y} : null;
+  }
+  // Clic simple sur la partition (mode Original) -> saut dans l'audio : temps calculé avec les points de synchro.
+  function seekAt(cx, cy) {
+    if (!api || !api.boundsLookup) { emit('log', 'clic partition : alphaTab pas prêt'); return; }
+    const h = barAtClient(cx, cy, false);
+    if (!h) { emit('log', `clic partition (${cx|0},${cy|0}) : aucune mesure`); return; }
+    const hit = h.mb, x = h.x;
     const beat = hit.findBeatAtPos(x);
+    if (mode === 'synth') {                                    // synthèse : on place la tête de lecture sur le temps visé
+      api.tickPosition = beat ? beat.absolutePlaybackStart : api.score.masterBars[hit.index].start;
+      return;
+    }
     let t = null;
     if (beat) t = timeOfBeat(beat);
     else if (hit.index < starts.length) {
       const a = starts[hit.index], b = hit.index + 1 < starts.length ? starts[hit.index + 1] : a + 2000;
       t = a + (b - a) * Math.max(0, Math.min(1, (x - hit.realBounds.x) / Math.max(1, hit.realBounds.w)));
     }
-    emit('log', `clic partition (${x|0},${y|0}) mesure ${hit.index + 1} -> ${t === null ? 'pas de synchro' : (t / 1000).toFixed(2) + ' s'}`);
+    emit('log', `clic partition mesure ${hit.index + 1} -> ${t === null ? 'pas de synchro' : (t / 1000).toFixed(2) + ' s'}`);
     if (t !== null) emit('seek', t);
   }
 
+  // ---- édition : un clic choisit un temps (mesure, temps) et une corde ; Python tient le modèle et renvoie la sélection
+  function stringAt(bb, cy) {
+    const el = document.getElementById('at').getBoundingClientRect(), r = bb.barBounds.realBounds, n = shown().staves[0].tuning.length;
+    const y = cy - el.top, step = r.h / Math.max(1, n - 1);
+    return Math.max(0, Math.min(n - 1, Math.round((y - r.y) / step)));
+  }
+  // temps de la voix `v` de la mesure `mb` le plus proche de l'abscisse `x` (null si cette voix n'est pas dessinée : voix de silences)
+  function beatInVoice(mb, v, x) {
+    const bar = shown().staves[0].bars[mb.index], vo = bar && bar.voices[v];
+    let best = null, bd = 1e9;
+    if (vo) for (const b of vo.beats) {
+      const bb = api.boundsLookup.findBeat(b);
+      if (!bb) continue;
+      const a = bb.realBounds.x, z = a + bb.realBounds.w, d = x < a ? a - x : x > z ? x - z : 0;
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  }
+  function editClick(cx, cy) {
+    const h = barAtClient(cx, cy, false);
+    if (!h) return;
+    const beat = curVoice ? beatInVoice(h.mb, curVoice, h.x) : h.mb.findBeatAtPos(h.x), bb = beat && api.boundsLookup.findBeat(beat);
+    if (!beat || !bb) {
+      const vb = h.mb.visualBounds;
+      emit('editsel', {bar: h.mb.index, beat: -1, string: 0, voice: curVoice, frac: Math.max(0, Math.min(1, (h.x - vb.x) / Math.max(1, vb.w)))});
+      return;
+    }
+    esel = {bar: h.mb.index, beat: beat.index, string: stringAt(bb, cy), voice: curVoice};
+    drawOverlays();
+    emit('editsel', esel);
+  }
+  // ---- cible de dépôt (glisser-déposer) : la mesure visée est entourée en pointillés ; la liste défile près des bords
+  // temps d'une mesure : « temps » de la signature (4/4 = 4 noires, 6/8 = 6 croches...) ; les changements de preset s'y calent
+  function slotInfo(i) { const mb = api.score.masterBars[i]; return {num: mb.timeSignatureNumerator || 4, unit: 3840 / (mb.timeSignatureDenominator || 4)}; }
+  function beatX(i, k) {                     // abscisse (repère de la partition) du temps k de la mesure i ; null si la mesure n'est pas dessinée
+    const bar = shown().staves[0].bars[i], v0 = bar && bar.voices[0];
+    const fb = v0 && v0.beats[0] && api.boundsLookup.findBeat(v0.beats[0]);
+    if (!fb) return null;
+    const mv = fb.barBounds.masterBarBounds.visualBounds;
+    if (!k) return mv.x;
+    const unit = slotInfo(i).unit, want = k * unit;
+    for (const b of v0.beats) {
+      if (b.playbackStart >= want - 1) {
+        if (b.playbackStart <= want + unit / 4) { const bb = api.boundsLookup.findBeat(b); if (bb) return bb.visualBounds.x; }
+        break;
+      }
+    }
+    return mv.x + mv.w * Math.min(1, want / Math.max(1, api.score.masterBars[i].calculateDuration()));   // pas de note pile là : on répartit
+  }
+  function beatAtX(h) {                      // temps de la mesure le plus proche (horizontalement) du point visé
+    const i = h.mb.index, n = slotInfo(i).num;
+    let best = 0, bd = 1e9;
+    for (let k = 0; k < n; k++) { const x = beatX(i, k); if (x !== null && Math.abs(h.x - x) < bd) { bd = Math.abs(h.x - x); best = k; } }
+    return best;
+  }
+  let dropEl = null;
+  function clearDrop() { if (dropEl) { dropEl.remove(); dropEl = null; } }
+  function showDrop(h, beat) {               // beat >= 0 : on vise un temps précis (trait vertical) et non la mesure entière
+    clearDrop();
+    if (!h) return;
+    const b = h.mb.visualBounds, d = document.createElement('div');
+    if (beat >= 0) {
+      const x = beatX(h.mb.index, beat);
+      d.className = 'dropl'; d.style.cssText = `left:${x === null ? b.x : x}px;top:${b.y - 10}px;height:${b.h + 20}px`;
+    } else {
+      d.className = 'drop';
+      d.style.cssText = `left:${b.x}px;top:${b.y - 6}px;width:${b.w}px;height:${b.h + 12}px`;
+    }
+    document.getElementById('lyr').appendChild(d);
+    dropEl = d;
+  }
+  function autoScroll(cy) {
+    const el = document.getElementById('score'), r = el.getBoundingClientRect();
+    if (cy < r.top + 44) el.scrollTop -= Math.max(4, (r.top + 44 - cy) / 2.5);
+    else if (cy > r.bottom - 44) el.scrollTop += Math.max(4, (cy - r.bottom + 44) / 2.5);
+  }
+  // ---- déplacer un marqueur (pastille de preset / drapeau de marque-page) d'une mesure à une autre
+  let mk = null;
+  function endMarkDrag(commit) {
+    if (!mk) return;
+    if (mk.ghost) mk.ghost.remove();
+    mk.pill.style.opacity = '';
+    if (commit && mk.moved && mk.target >= 0 && (mk.target !== mk.bar || mk.tbeat !== mk.beat)) emit('moveMark', {kind: mk.kind, from: mk.bar, fromBeat: mk.beat, to: mk.target, toBeat: mk.tbeat});
+    clearDrop(); mk = null;
+  }
+  // ---- sélection d'une zone par glissement (mode Original ; en synthèse c'est alphaTab qui sélectionne)
+  let sel = null;
+  function drawLiveRange(a, b) { rangeBars = [Math.min(a, b), Math.max(a, b)]; drawOverlays(); }
+  document.addEventListener('mousedown', e => {
+    if (e.button === 0 && e.target.closest) {
+      const pill = e.target.closest('.pre,.bkm');
+      if (pill && pill.dataset.kind) { mk = {kind: pill.dataset.kind, bar: +pill.dataset.bar, beat: +(pill.dataset.beat || 0), cx: e.clientX, cy: e.clientY, moved: false, ghost: null, pill, target: -1, tbeat: 0}; e.preventDefault(); return; }
+    }
+    if (e.button !== 0) return;
+    sel = {cx: e.clientX, cy: e.clientY, h: barAtClient(e.clientX, e.clientY, false), dragging: false, prev: rangeBars ? rangeBars.slice() : null};
+  }, true);
+  document.addEventListener('mousemove', e => {
+    if (mk) {
+      if (!mk.moved && Math.hypot(e.clientX - mk.cx, e.clientY - mk.cy) > 5) {
+        mk.moved = true; mk.ghost = mk.pill.cloneNode(true); mk.ghost.classList.add('ghost'); document.body.appendChild(mk.ghost); mk.pill.style.opacity = '.3';
+      }
+      if (mk.moved) {
+        mk.ghost.style.left = (e.clientX + 10) + 'px'; mk.ghost.style.top = (e.clientY + 6) + 'px';
+        const h = barAtClient(e.clientX, e.clientY, true), fine = h && mk.kind === 'preset' ? beatAtX(h) : -1;
+        showDrop(h, fine); mk.target = h ? h.mb.index : -1; mk.tbeat = Math.max(0, fine); autoScroll(e.clientY);
+      }
+      return;
+    }
+    if (sel && sel.h && (e.buttons & 1)) {
+      if (!sel.dragging && Math.hypot(e.clientX - sel.cx, e.clientY - sel.cy) > 6) sel.dragging = loopOn || 'idle';   // sans le mode boucle, glisser ne choisit rien
+      if (sel.dragging === true) { const h = barAtClient(e.clientX, e.clientY, true); if (h) drawLiveRange(sel.h.mb.index, h.mb.index); autoScroll(e.clientY); }
+    }
+  }, true);
+  document.addEventListener('mouseup', e => {
+    if (mk) { endMarkDrag(true); return; }
+    if (!sel) return;
+    const s = sel; sel = null;
+    if (e.button !== 0) return;
+    if (s.dragging === 'idle') return;
+    if (s.dragging) {
+      const h = barAtClient(e.clientX, e.clientY, true), a = s.h ? s.h.mb.index : -1;
+      if (h && a >= 0) { synth.setRange(Math.min(a, h.mb.index), Math.max(a, h.mb.index)); return; }
+      else { rangeBars = s.prev; }
+      drawOverlays();
+    } else if (editOn) editClick(s.cx, s.cy); else seekAt(s.cx, s.cy);
+  }, true);
+  // Ctrl + molette (ou pincement) : zoom de l'application, pas celui du navigateur. Un cran de souris = un palier.
+  let wheelAcc = 0;
+  document.addEventListener('wheel', e => {
+    if (!e.ctrlKey) return;
+    e.preventDefault(); e.stopPropagation();
+    wheelAcc += e.deltaMode === 0 ? e.deltaY : e.deltaY * 40;
+    if (Math.abs(wheelAcc) >= 50) { emit('zoom', wheelAcc < 0 ? 1 : -1); wheelAcc = 0; }
+  }, {passive: false, capture: true});
+  // si la fenêtre n'a pas pris elle-même ces raccourcis (le focus est dans la page), on les lui renvoie
+  const EDIT_KEYS = new Set(['0','1','2','3','4','5','6','7','8','9','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Delete','Backspace','Insert','Escape','r','R','.','Enter']);
+  // pavé numérique : chiffres, point et Entrée par leur code physique (selon le clavier et le verrouillage numérique, `key` peut valoir « End », « Clear »…)
+  function keyOf(e) {
+    const numLock = !e.getModifierState || e.getModifierState('NumLock') || /^[0-9.]$/.test(e.key);      // verrouillage éteint : ce sont des flèches
+    const m = /^Numpad(\d)$/.exec(e.code || '');
+    if (m && numLock) return m[1];
+    if (e.code === 'NumpadDecimal' && numLock) return '.';
+    if (e.code === 'NumpadEnter') return 'Enter';
+    return e.key;
+  }
+  document.addEventListener('keydown', e => {
+    const key = keyOf(e);
+    const clip = editOn && (e.ctrlKey || e.metaKey) && !e.altKey && ['c', 'x', 'v'].includes(key.toLowerCase());
+    if (!editOn || ((e.ctrlKey || e.metaKey) && !clip) || e.altKey || !(clip || EDIT_KEYS.has(key))) return;
+    if (key === 'Escape') { esel = null; drawOverlays(); }
+    emit('editkey', {key, shift: e.shiftKey, ctrl: clip});
+    e.preventDefault();
+  }, true);
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) emit('undo', 0);
+    else if (k === 'y' || (k === 'z' && e.shiftKey)) emit('undo', 1);
+    else if (k === '+' || k === '=') emit('zoom', 1);
+    else if (k === '-') emit('zoom', -1);
+    else if (k === '0') emit('zoom', 0);
+    else return;
+    e.preventDefault();
+  }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { endMarkDrag(false); if (sel && sel.dragging) { rangeBars = sel.prev; drawOverlays(); } sel = null; } });
+  // clic droit : Python ouvre son menu à cet endroit (mesure sous le curseur, et marqueur éventuel visé)
+  document.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    const pill = e.target.closest && e.target.closest('.pre,.bkm'), h = barAtClient(e.clientX, e.clientY, true);
+    emit('context', {bar: h ? h.mb.index : -1, beat: h ? beatAtX(h) : 0, x: e.clientX, y: e.clientY, kind: pill ? pill.dataset.kind : '', mark: pill ? +pill.dataset.bar : -1});
+  }, true);
+
   // Rythmes SOUS la tablature, comme dans Guitar Pro : petits bâtons détachés des notes (jamais reliés aux chiffres), avec
   // leurs barres de croches. Dessinés ici (SVG) car alphaTab relie ses bâtons aux notes.
-  const STEM_GAP = 9, STEM_LEN = 20, BEAM_STEP = 5, BEAM_W = 3;
+  let STEM_GAP = 9, STEM_LEN = 20, BEAM_STEP = 5, BEAM_W = 3;      // bâtons de rythme sous la tablature : suivent le zoom (cf setZ)
   function drawRhythms(svg) {
     const NS = 'http://www.w3.org/2000/svg';
     const add = (name, attrs) => { const n = document.createElementNS(NS, name); for (const k in attrs) n.setAttribute(k, attrs[k]); svg.appendChild(n); return n; };
@@ -189,8 +439,8 @@ const melos = (() => {
       for (const items of groups.values()) {
         for (const it of items) {
           if (!it || it.dur < 2) continue;                       // pas de bâton pour une ronde ni un silence
-          add('line', {x1: it.x, x2: it.x, y1: it.yTop, y2: it.yTop + STEM_LEN, 'stroke-width': 1.3});
-          if (it.dots) add('circle', {cx: it.x + 6, cy: it.yTop + STEM_LEN - 3, r: 1.6});
+          add('line', {x1: it.x, x2: it.x, y1: it.yTop, y2: it.yTop + STEM_LEN, 'stroke-width': 1.3 * Z});
+          if (it.dots) add('circle', {cx: it.x + 6 * Z, cy: it.yTop + STEM_LEN - 3 * Z, r: 1.6 * Z});
         }
         const lvl = it => (it && it.dur >= 8) ? Math.log2(it.dur) - 2 : 0;
         const top = Math.max(0, ...items.map(lvl));
@@ -206,7 +456,7 @@ const melos = (() => {
               const neighbour = i > 0 && items[i - 1] ? -1 : 1;
               const len = L === 1 && items.filter(x => lvl(x) >= 1).length === 1 ? 9 : 7;
               add('line', {x1: items[i].x, x2: items[i].x + (L === 1 && items.filter(x => lvl(x) >= 1).length === 1 ? 7 : neighbour * -len), y1: y,
-                           y2: L === 1 && items.filter(x => lvl(x) >= 1).length === 1 ? y - 8 : y, 'stroke-width': BEAM_W - 0.5});
+                           y2: L === 1 && items.filter(x => lvl(x) >= 1).length === 1 ? y - 8 * Z : y, 'stroke-width': BEAM_W - 0.5 * Z});
             }
             i = j + 1;
           }
@@ -216,7 +466,7 @@ const melos = (() => {
   }
 
   const canvas = document.createElement('canvas').getContext('2d');
-  const textWidth = t => { canvas.font = 'italic 600 13px "Segoe UI",Roboto,sans-serif'; return canvas.measureText(t).width; };
+  const textWidth = t => { canvas.font = `italic 600 ${13 * Z}px "Segoe UI",Roboto,sans-serif`; return canvas.measureText(t).width; };
 
   // Mise en page DYNAMIQUE : alphaTab ne sait pas élargir une mesure pour ses paroles, ni garder un bon nombre de mesures
   // par ligne quand la fenêtre change. Un premier rendu à largeur « naturelle » (stretchForce 0) donne la largeur de
@@ -287,12 +537,67 @@ const melos = (() => {
       const beat = bars[bar] && bars[bar].voices[0] && bars[bar].voices[0].beats[0];
       return beat && api.boundsLookup.findBeat(beat);
     };
+    if (rangeBars) {                                                        // zone de boucle (même dessin en Original et en synthèse)
+      for (let i = rangeBars[0]; i <= rangeBars[1]; i++) {
+        const b = first(i);
+        if (!b) continue;
+        const v = b.barBounds.masterBarBounds.visualBounds, d = document.createElement('div');
+        d.className = 'rng' + (i === rangeBars[0] ? ' a' : '') + (i === rangeBars[1] ? ' b' : '');
+        d.style.cssText = `left:${v.x}px;top:${v.y - 4}px;width:${v.w}px;height:${v.h + 8}px`;
+        frag.appendChild(d);
+      }
+    }
+    for (const bar of edited) {                                            // mesures de « Ma version » modifiées : pastille ambre
+      const b = first(bar);
+      if (!b) continue;
+      const v = b.barBounds.masterBarBounds.visualBounds, d = document.createElement('div');
+      d.className = 'mod'; d.title = 'Mesure modifiée';
+      d.style.cssText = `left:${v.x + v.w - 14 * Z}px;top:${b.barBounds.realBounds.y - 16 * Z}px`;
+      frag.appendChild(d);
+    }
+    if (editOn && esel) {                                                   // sélection : le temps, et la corde visée
+      const ev = esel.voice || 0, beat = bars[esel.bar] && bars[esel.bar].voices[ev] && bars[esel.bar].voices[ev].beats[esel.beat], bb = beat && api.boundsLookup.findBeat(beat);
+      if (bb) {
+        const r = bb.barBounds.realBounds, n = shown().staves[0].tuning.length, step = r.h / Math.max(1, n - 1);
+        const col = document.createElement('div'), box = document.createElement('div');
+        col.className = 'esc'; col.style.cssText = `left:${bb.realBounds.x}px;top:${r.y - 6}px;width:${Math.max(14, bb.realBounds.w)}px;height:${r.h + 12}px`;
+        box.className = 'esn'; box.style.cssText = `left:${bb.onNotesX - 11 * Z}px;top:${r.y + esel.string * step - 9 * Z}px;width:${22 * Z}px;height:${18 * Z}px`;
+        frag.appendChild(col); frag.appendChild(box);
+      }
+    }
+    const flagged = new Set(bookmarks.map(([bar]) => bar)), titled = new Set(marks.map(([bar]) => bar));
     for (const [bar, text] of marks) {
       const b = first(bar);
       if (!b) continue;
       const sys = b.barBounds.masterBarBounds.visualBounds, d = document.createElement('div');
-      d.className = 'sec'; d.textContent = text;
-      d.style.left = (b.barBounds.masterBarBounds.visualBounds.x + 4) + 'px'; d.style.top = (sys.y - 24) + 'px';
+      d.className = 'sec'; d.textContent = text; d.dataset.bar = bar;
+      // un marque-page sur la même mesure : son drapeau passe devant, le titre de section se décale
+      d.style.left = (b.barBounds.masterBarBounds.visualBounds.x + 4 + (flagged.has(bar) ? 18 * Z : 0)) + 'px'; d.style.top = (sys.y - 24 * Z) + 'px';
+      frag.appendChild(d);
+    }
+    // marque-pages : petit drapeau doré au début de la mesure (+ son nom s'il n'y a pas de titre de section au même endroit)
+    for (const [bar, name] of bookmarks) {
+      const b = first(bar);
+      if (!b) continue;
+      const sys = b.barBounds.masterBarBounds.visualBounds, d = document.createElement('div');
+      d.className = 'bkm'; d.title = name; d.dataset.bar = bar; d.dataset.kind = 'bookmark';
+      d.appendChild(document.createElement('i'));
+      if (!titled.has(bar)) { const t = document.createElement('span'); t.textContent = name.length > 22 ? name.slice(0, 21) + '…' : name; d.appendChild(t); }
+      d.style.left = (sys.x + 4) + 'px'; d.style.top = (sys.y - 24 * Z) + 'px';
+      frag.appendChild(d);
+    }
+    const pend = [];
+    for (const [bar, slot, color, name, warn, status, beat] of presets) {  // changements de preset : pastille colorée au début de la mesure (ou au temps visé)
+      const b = first(bar);
+      if (!b) continue;
+      const sys = b.barBounds.masterBarBounds.visualBounds, d = document.createElement('div'), bx = beat ? beatX(bar, beat) : null;
+      d.className = 'pre' + (warn ? ' warn' : '') + (status === 'missing' || status === 'deleted' ? ' miss' : '');
+      d.dataset.bar = bar; d.dataset.beat = beat || 0; d.dataset.kind = 'preset'; d.title = (beat ? `Temps ${beat + 1} · ` : '') + name + (warn ? ' — ' + warn : '');
+      d.style.setProperty('--pc', color);
+      d.appendChild(document.createElement('b'));
+      const t = document.createElement('span'); t.textContent = (slot ? slot + ' · ' : '') + (name.length > 16 ? name.slice(0, 15) + '…' : name) + (status === 'missing' ? ' — non chargé' : ''); d.appendChild(t);
+      d.style.top = (sys.y - 26 * Z) + 'px';
+      pend.push({d, bar, beat: beat || 0, top: sys.y, x: bx === null || !beat ? sys.x + 4 : bx});
       frag.appendChild(d);
     }
     for (const [bar, bi, text] of lyr) {
@@ -302,7 +607,7 @@ const melos = (() => {
       const sys = b.barBounds.masterBarBounds.visualBounds, d = document.createElement('div');
       d.className = 'lyr'; d.textContent = text;
       const rb = b.barBounds.realBounds;
-      lab.push({d, x: b.visualBounds.x, y: Math.round(rb.y + rb.h + STEM_GAP + STEM_LEN + 12), w: textWidth(text)});
+      lab.push({d, x: b.visualBounds.x, y: Math.round(rb.y + rb.h + STEM_GAP + STEM_LEN + 12 * Z), w: textWidth(text)});
     }
     let rowY = null, end = 0;                       // anti-chevauchement par ligne
     for (const l of lab) {
@@ -313,6 +618,17 @@ const melos = (() => {
       frag.appendChild(l.d);
     }
     box.appendChild(frag);
+    // les pastilles de preset se rangent à droite du drapeau / du titre de section de la même mesure (largeurs mesurées une fois posées)
+    const rowEnd = new Map();                                  // fin de la dernière pastille de chaque ligne : deux changements dans la même mesure ne se chevauchent pas
+    for (const p of pend) {
+      let x = p.x;
+      for (const el of box.children) {
+        if (el.dataset.bar === String(p.bar) && (el.classList.contains('sec') || el.classList.contains('bkm'))) x = Math.max(x, el.offsetLeft + el.offsetWidth + 6);
+      }
+      if (rowEnd.has(p.top)) x = Math.max(x, rowEnd.get(p.top));
+      p.d.style.left = x + 'px';
+      rowEnd.set(p.top, x + p.d.offsetWidth + 4);
+    }
   }
 
   // Défilement « intelligent » : la ligne jouée est replacée à ~30 % de la hauteur de la vue quand on change de
@@ -345,6 +661,19 @@ const melos = (() => {
     };
     anim = requestAnimationFrame(step);
   }
+  // Durée approximative (ms) du début de chaque mesure, pour afficher la zone de boucle sur la barre de progression en
+  // synthèse (tempo de la mesure ; les ralentis progressifs ne sont pas modélisés). En mode Original : les vrais points de synchro.
+  function barMs(i) {
+    if (mode !== 'synth') return i < starts.length ? starts[i] : (starts.length ? starts[starts.length - 1] + (duration - starts[starts.length - 1]) : 0);
+    const mbs = api.score.masterBars; let ms = 0, tempo = api.score.tempo || 120;
+    for (let k = 0; k < Math.min(i, mbs.length); k++) {
+      const mb = mbs[k], ta = mb.tempoAutomations && mb.tempoAutomations.length ? mb.tempoAutomations[mb.tempoAutomations.length - 1] : mb.tempoAutomation;
+      if (ta && ta.value) tempo = ta.value;
+      ms += mb.calculateDuration() * 60000 / (960 * tempo);
+    }
+    return ms;
+  }
+  function rangeInfo(lo, hi) { return {bars: [lo, hi], t0: barMs(lo), t1: barMs(hi + 1)}; }
   // ---------- mode synthèse ----------
   const barOfTick = tick => {
     const mbs = api.score.masterBars;
@@ -374,6 +703,7 @@ const melos = (() => {
       api.countInVolume = o.countIn ? 1 : 0;
       api.isLooping = !!o.loop;
       applyMix();
+      if (rangeBars) synth.setRange(rangeBars[0], rangeBars[1]);
       if (o.bar !== undefined && o.bar >= 0) api.tickPosition = tickOf(o.bar, o.frac);
     } catch (err) { emit('error', 'synthèse : ' + err); }
     emit('player-ready', 1);
@@ -384,6 +714,11 @@ const melos = (() => {
     if (!api || !api.score || !api.score.tracks[idx]) return;
     shownIdx = idx;
     lyr = (lyricsList || []).slice(); marks = (markersList || []).slice();
+    resetLayout();
+  }
+  // Repart de zéro : largeurs naturelles à l'échelle courante, puis nouvelle répartition des mesures par ligne
+  // (même procédure pour un changement de piste et pour un changement de zoom : le nombre de mesures par ligne suit).
+  function resetLayout() {
     const track = shown();
     for (const b of track.staves[0].bars) b.displayScale = 1;
     track.systemsLayout = [];
@@ -415,21 +750,131 @@ const melos = (() => {
     metronome(on) { if (api) api.metronomeVolume = on ? 1 : 0; },
     countIn(on) { if (api) api.countInVolume = on ? 1 : 0; },
     loop(on) { if (api) api.isLooping = !!on; },
-    clearRange() { if (api) { api.playbackRange = null; api.clearPlaybackRangeHighlight(); emit('range', null); } },
+    clearRange() { rangeBars = null; if (api) { if (mode === 'synth') { api.playbackRange = null; api.clearPlaybackRangeHighlight(); } drawOverlays(); } emit('range', null); },
+    // zone de boucle choisie depuis Python (menu clic droit) : mesures a..b incluses
+    setRange(a, b) {
+      if (!api || !api.score) return;
+      const lo = Math.max(0, Math.min(a, b)), hi = Math.min(api.score.masterBars.length - 1, Math.max(a, b));
+      rangeBars = [lo, hi];
+      if (mode === 'synth') {
+        const mbs = api.score.masterBars;
+        api.playbackRange = {startTick: mbs[lo].start, endTick: mbs[hi].start + mbs[hi].calculateDuration()};
+        api.clearPlaybackRangeHighlight();                                 // le style de la zone est celui de la page (surcouche), pas celui d'alphaTab
+      }
+      drawOverlays();
+      emit('range', rangeInfo(lo, hi));
+    },
     mix(solo, mute, vol) {
       mix = {solo: new Set(solo), mute: new Set(mute), vol: Object.assign({}, vol)};
       if (api && api.score && api.player && api.player.isReady !== false) { try { applyMix(); } catch (err) { emit('error', 'mixage : ' + err); } }
     },
     exportMidi,
   };
-  // écouteur au niveau du document (phase de capture) : aucun élément ne peut le masquer
-  document.addEventListener('mousedown', e => { emit('log', `mousedown (${e.clientX|0},${e.clientY|0}) sur ${e.target.tagName}.${(e.target.className && e.target.className.baseVal !== undefined ? e.target.className.baseVal : e.target.className) || ''}`); try { clickScore(e); } catch (err) { emit('log', 'clic partition : erreur ' + err); } }, true);
+  // ---------- métronome et décompte du mode Original ----------
+  // En mode Original l'audio vient de mpv (autre processus) : les clics sont produits ici (WebAudio) et calés sur la position
+  // qu'envoie Python toutes les ~50 ms. L'horloge de la page prolonge cette position entre deux messages ; les clics des
+  // 180 ms à venir sont planifiés à l'avance sur l'horloge audio (précis), seule la dérive de mpv peut les décaler un peu.
+  const clk = {on: false, vol: 0.6, ctx: null, refMs: 0, refPerf: 0, playing: false, rate: 1, lastT: -1, beats: null, nodes: []};
+  function audioCtx() {
+    if (!clk.ctx) clk.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (clk.ctx.state === 'suspended') clk.ctx.resume();
+    return clk.ctx;
+  }
+  function clickAt(when, accent) {
+    const ctx = audioCtx(), o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'triangle'; o.frequency.value = accent ? 1568 : 1046;
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.001, clk.vol * (accent ? 1 : 0.7)), when + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.06);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(when); o.stop(when + 0.07);
+    clk.nodes.push(o); o.onended = () => { const i = clk.nodes.indexOf(o); if (i >= 0) clk.nodes.splice(i, 1); };
+  }
+  const stopClicks = () => { for (const o of clk.nodes.splice(0)) { try { o.stop(); } catch (err) { /* déjà arrêté */ } } };
+  function beatTable() {                                  // temps de chaque mesure : réparti entre deux points de synchro
+    if (clk.beats) return clk.beats;
+    const out = [];
+    if (api && api.score && starts.length) {
+      const mbs = api.score.masterBars;
+      for (let i = 0; i < Math.min(starts.length, mbs.length); i++) {
+        const num = mbs[i].timeSignatureNumerator || 4, a = starts[i], b = i + 1 < starts.length ? starts[i + 1] : a + (i ? a - starts[i - 1] : 2000);
+        for (let k = 0; k < num; k++) out.push({t: a + (b - a) * k / num, acc: k === 0});
+      }
+    }
+    return clk.beats = out;
+  }
+  setInterval(() => {
+    if (!clk.on || !clk.playing || mode === 'synth' || document.hidden) return;
+    const beats = beatTable();
+    if (!beats.length) return;
+    const t = clk.refMs + (performance.now() - clk.refPerf) * clk.rate, horizon = t + 180 * clk.rate, from = Math.max(clk.lastT, t - 30);
+    let lo = 0, hi = beats.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (beats[mid].t > from) hi = mid; else lo = mid + 1; }
+    const now = audioCtx().currentTime;
+    for (let i = lo; i < beats.length && beats[i].t <= horizon; i++) { clickAt(now + Math.max(0, (beats[i].t - t) / clk.rate / 1000), beats[i].acc); clk.lastT = beats[i].t; }
+  }, 25);
+  function clockUpdate(ms, playingNow, r) {
+    const now = performance.now(), pred = clk.refMs + (now - clk.refPerf) * clk.rate;
+    if (!clk.playing || !playingNow || Math.abs(pred - ms) > 120) { clk.refMs = ms; clk.lastT = ms - 1; stopClicks(); }
+    else clk.refMs = pred + (ms - pred) * 0.15;           // correction douce : pas de saccades
+    clk.refPerf = now; clk.playing = playingNow; clk.rate = r || 1;
+  }
+
+  // --- Sonde de diagnostic (coupures de la synthèse) : écrit dans melos_debug.log (source « page »). On y voit si le thread de la
+  // page se bloque, si l'horloge audio saute ou dérive, et si la mémoire JS grossit au fil des heures. Aucun effet sur le son.
+  (function probe() {
+    let last = performance.now(), ctxT = null, wall = 0, lastMem = 0;
+    const T0 = performance.now();
+    setInterval(() => {
+      const now = performance.now(), gap = now - last; last = now;
+      if (document.hidden) { ctxT = null; return; }          // page cachée : Chromium ralentit les minuteries, ce ne serait que de faux positifs
+      if (gap > 250) emit('log', `SONDE page bloquée ${gap | 0} ms (attendu 50) à ${((now - T0) / 1000).toFixed(1)} s`);
+      try {
+        const out = api && api.player && api.player.output;
+        const ctx = out && (out._context || out.context || out._audioContext);
+        if (ctx && typeof ctx.currentTime === 'number') {
+          if (ctxT !== null && ctx.state === 'running') {
+            const dAudio = (ctx.currentTime - ctxT) * 1000, dWall = now - wall;
+            if (Math.abs(dAudio - dWall) > 120) emit('log', `SONDE horloge audio : +${dAudio | 0} ms audio pour +${dWall | 0} ms réels (état ${ctx.state})`);
+          }
+          if (ctx.state !== 'running' && playing) emit('log', `SONDE contexte audio en état « ${ctx.state} » pendant la lecture`);
+          ctxT = ctx.currentTime; wall = now;
+        }
+      } catch (err) { /* sonde : jamais d'erreur visible */ }
+      if (performance.memory && now - lastMem > 60000) {
+        lastMem = now;
+        emit('log', `SONDE mémoire JS ${(performance.memory.usedJSHeapSize / 1048576).toFixed(0)} Mo (tas ${(performance.memory.totalJSHeapSize / 1048576).toFixed(0)} Mo) à ${((now - T0) / 60000).toFixed(0)} min`);
+      }
+    }, 50);
+  })();
   return {
     load, handler, setTrack, synth,
     setDuration(ms) { duration = ms; },
+    // métronome / décompte (mode Original) : réglage, et suite de clics isolés (décompte avant le départ)
+    click(on, vol) { clk.on = !!on; if (vol !== undefined) clk.vol = vol; if (!on) stopClicks(); else audioCtx(); },
+    stopClicks,
+    // décompte : une mesure de clics (au tempo de la mesure `bar`, vitesse r) ; renvoie les ms avant le temps fort de départ
+    countInBar(bar, r) {
+      if (!api || !api.score || !starts.length) return 0;
+      const i = Math.max(0, Math.min(bar, starts.length - 1)), mbs = api.score.masterBars, num = (mbs[i] && mbs[i].timeSignatureNumerator) || 4;
+      const a = starts[i], b = i + 1 < starts.length ? starts[i + 1] : a + (i ? a - starts[i - 1] : 2000);
+      const interval = (b - a) / num / (r || 1), t0 = audioCtx().currentTime + 0.06;
+      for (let k = 0; k < num; k++) clickAt(t0 + k * interval / 1000, k === 0);
+      return Math.round(60 + num * interval);
+    },
+    countClicks(n, intervalMs) { const t0 = audioCtx().currentTime + 0.05; for (let i = 0; i < n; i++) clickAt(t0 + i * intervalMs / 1000, i === 0); },
+    // Marque-pages [[mesure, nom]] : redessinés tout de suite si la partition est affichée (sinon au prochain dessin)
+    setPresets(list) { presets = (list || []).slice(); if (api && api.score && phase === 1 && !busy) drawOverlays(); },
+    setBookmarks(list) { bookmarks = (list || []).slice(); if (api && api.score && phase === 1 && !busy) drawOverlays(); },
+    // Fait défiler la partition jusqu'à la mesure (même si on avait défilé à la main)
+    revealBar(i) {
+      if (!api || !api.boundsLookup || !api.score) return;
+      const bar = shown().staves[0].bars[i], beat = bar && bar.voices[0] && bar.voices[0].beats[0];
+      if (beat) { refocus = true; userScrollUntil = 0; followBeat(beat); }
+    },
     // Nouveaux points de synchro (ms de début de chaque mesure dans l'audio) sans recharger ni redessiner la partition
     setSync(list) {
-      starts = list.slice();
+      starts = list.slice(); clk.beats = null;
       if (!api || !api.score) return;
       api.score.applyFlatSyncPoints(list.map((ms, i) => ({barIndex: i, barOccurence: 0, barPosition: 0,
                                                           millisecondOffset: Math.max(0, Math.round(ms))})));
@@ -440,6 +885,7 @@ const melos = (() => {
       if (!api || !api.player || !api.player.output) return;
       if (playing && !wasPlaying) { refocus = true; userScrollUntil = 0; }
       wasPlaying = playing;
+      clockUpdate(ms, playing, r);
       fromVideo = true;
       try {
         if (r && r !== rate) rate = r;
@@ -451,7 +897,39 @@ const melos = (() => {
     play() { api && api.playPause(); },
     seekBar(i) { const mb = api && api.score && api.score.masterBars[i]; if (mb) { api.tickPosition = mb.start; } },
     setTracks(idx) { if (api && api.score) api.renderTracks(idx.map(i => api.score.tracks[i])); },
-    setScale(s) { if (api) { api.settings.display.scale = s; busy = true; api.updateSettings(); api.render(); } },
+    setScale(s) {
+      if (!api || !api.score) return;
+      api.settings.display.scale = s; setZ(s);
+      resetLayout();
+    },
+    // édition : mode, sélection, mesures modifiées, nouveau contenu (même alphaTab : la banque de sons reste chargée)
+    setEdit(on) { editOn = !!on; document.body.classList.toggle('editing', editOn); if (!editOn) esel = null; if (api && api.score && phase === 1 && !busy) drawOverlays(); },
+    setVoice(v) { curVoice = v | 0; },
+    setLoopMode(on) { loopOn = !!on; },
+    select(bar, beat, string, voice) { esel = bar >= 0 && beat >= 0 ? {bar, beat, string, voice: voice | 0} : null; if (api && api.score && phase === 1 && !busy) drawOverlays(); },
+    setEdited(list) { edited = (list || []).slice(); if (api && api.score && phase === 1 && !busy) drawOverlays(); },
+    reload(tex, lyricsList, markersList, o) {
+      if (!api) return;
+      o = o || {};
+      shownIdx = o.track || 0; edited = (o.edited || []).slice();
+      lyr = (lyricsList || []).slice(); marks = (markersList || []).slice();
+      keepScroll = document.getElementById('score').scrollTop;
+      freeze();
+      phase = 0; nat = tgt = null; busy = true; pending = false; lastRow = -1;
+      document.getElementById('lyr').innerHTML = '';
+      clearTimeout(busyTimer); busyTimer = setTimeout(() => { busy = false; keepScroll = null; unfreeze(); }, 15000);
+      api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode.Automatic;      // comme au premier chargement : largeurs naturelles d'abord
+      api.settings.display.stretchForce = 0;
+      api.updateSettings();
+      api.tex(tex, [shownIdx]);
+    },
+    // zone de boucle (mode Original aussi) : mêmes noms qu'en synthèse
+    setRange(a, b) { synth.setRange(a, b); },
+    clearRange() { synth.clearRange(); },
+    // glisser-déposer depuis une fenêtre Python : survol (renvoie la mesure visée, -1 si aucune), dépôt, annulation
+    dragHover(cx, cy, fine) { const h = barAtClient(cx, cy, true); showDrop(h, h && fine ? beatAtX(h) : -1); autoScroll(cy); return h ? h.mb.index : -1; },
+    dragEnd(cx, cy) { const h = barAtClient(cx, cy, true); clearDrop(); return h ? {bar: h.mb.index, beat: beatAtX(h)} : -1; },
+    dragCancel() { clearDrop(); },
     drain() {
       if (posDirty && api && api.score && mode === 'synth') {          // position du synthétiseur : toujours la plus récente
         posDirty = false;
@@ -461,6 +939,7 @@ const melos = (() => {
       const e = events.splice(0); return JSON.stringify(e);
     },
     _api: () => api,
+    _edited: () => edited,
   };
 })();
 </script>

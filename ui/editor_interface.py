@@ -19,7 +19,7 @@ from datetime import datetime
 
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 from qfluentwidgets import (Action, BodyLabel, CaptionLabel, FlowLayout, FluentIcon, HeaderCardWidget, IconWidget,
                             InfoBar, InfoBarPosition, MenuAnimationType, MessageBox, PrimaryPushButton, PushButton, RoundMenu,
                             ScrollArea, SearchLineEdit, SegmentedWidget, SwitchButton, ToggleButton, ToolButton,
@@ -35,20 +35,10 @@ from ui.editor_widgets import (EFFECT_COLOR, EFFECT_NAME, GREEN, GREY, ORANGE, S
                                PresetInfoDialog, SlotCard, StateLegend, TagPill, fluent_tip, readable)
 from ui.widgets import NoWheelComboBox, NoWheelSlider
 
-try:                                                   # mêmes couleurs et mêmes noms que le panneau Presets
-    from ui.preset_panel import NAMES_FILE, PRESET_COLORS
-except Exception:                                      # pragma: no cover
-    NAMES_FILE, PRESET_COLORS = Path("preset_names.json"), {}
+from ui.preset_panel import PRESET_COLORS, SlotNames   # mêmes couleurs et MÊMES noms que le panneau Presets
 
 SPACING = 12
 CONTROL_H = 32                  # hauteur unique des boutons
-
-
-def custom_slot_names() -> dict[int, str]:
-    try:
-        return {int(k): v for k, v in json.loads(Path(NAMES_FILE).read_text(encoding="utf-8")).items()}
-    except (OSError, ValueError):
-        return {}
 
 
 class _Coalescer:
@@ -363,7 +353,7 @@ class StatusDot(QLabel):
 
 
 class EditorInterface(QWidget):
-    def __init__(self, service, library, state, parent=None):
+    def __init__(self, service, library, state, parent=None, names: SlotNames | None = None):
         super().__init__(parent)
         self.setObjectName("EditorInterface")           # requis par FluentWindow
         self.service, self.library, self.state = service, library, state
@@ -374,7 +364,8 @@ class EditorInterface(QWidget):
         self._rows: list[ParamRow] = []
         self._rows_key = None
         self._order_key = None
-        self._names = custom_slot_names()
+        self.names = names if names is not None else SlotNames(service, library, self)   # noms partagés (cf ui/preset_panel.py)
+        self._lib_sig = None
         self._cat = get_catalog()
         self._hinted = False
         self._ready = False
@@ -382,6 +373,8 @@ class EditorInterface(QWidget):
 
         # Les signaux du service arrivent du thread de travail : des méthodes liées les remettent dans le thread Qt.
         service.slot_updated.connect(self._on_slot_updated)
+        self._lib_sig = tuple((e.id, e.name) for e in library.entries())
+        self.names.changed.connect(self._on_names_changed)
         service.entry_updated.connect(self._on_entry_updated)
         service.loaded.connect(self._on_loaded)
         service.failed.connect(self._on_failed)
@@ -397,22 +390,41 @@ class EditorInterface(QWidget):
         self.refresh()
 
     # ------------------------------------------------------------------ construction
+    def minimumSizeHint(self):
+        return QSize(self._content.minimumSizeHint().width(), 320)      # largeur du contenu ; hauteur : le défilement de secours
+
     def _build(self):
-        root = QHBoxLayout(self)
-        root.setContentsMargins(20, 20, 20, 20)
-        root.setSpacing(SPACING + 4)
+        # Page dans une zone de défilement VERTICALE de secours : sur un petit écran la hauteur minimale de la page ne doit
+        # jamais dépasser la zone utile (sinon la fenêtre maximisée passe sous la barre des tâches). Sur un écran assez
+        # grand la barre n'apparaît pas. La largeur minimale reste celle du contenu (cf minimumSizeHint).
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea{background:transparent;border:none}")
+        scroll.viewport().setAutoFillBackground(False)
+        self._content = QWidget()
+        self._content.setStyleSheet("background:transparent")
+        scroll.setWidget(self._content)
+        outer.addWidget(scroll)
+        root = QHBoxLayout(self._content)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(SPACING)
         self.library_panel = LibraryPanel(self)
         root.addWidget(self.library_panel)
 
         right = QVBoxLayout()
-        right.setSpacing(SPACING)
+        right.setSpacing(8)
         root.addLayout(right, 1)
 
         # --- Emplacements du Mighty (miroir de l'ampli)
         slots = section_card("Mighty Plug Pro · emplacements", FluentIcon.LAYOUT)
         self.btn_backups = tool_button(FluentIcon.HISTORY, "Sauvegardes automatiques de l'ampli : restaurer ou importer",
                                        lambda: self.open_backups())
-        slots.headerLayout.addStretch(1)
+        self.legend = StateLegend()                       # légende des pastilles : dans l'en-tête (gagne une ligne de hauteur)
+        slots.headerLayout.addWidget(self.legend, 1)
         slots.headerLayout.addWidget(self.btn_backups)
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -426,8 +438,6 @@ class EditorInterface(QWidget):
         slot_col = QVBoxLayout()
         slot_col.setSpacing(6)
         slot_col.addLayout(row)
-        self.legend = StateLegend()
-        slot_col.addWidget(self.legend)
         slots.viewLayout.addLayout(slot_col)
         right.addWidget(slots)
 
@@ -472,7 +482,7 @@ class EditorInterface(QWidget):
         # --- Chaîne d'effets
         chain = section_card("Chaîne d'effets", FluentIcon.CONNECT)
         chain_col = QVBoxLayout()
-        chain_col.setSpacing(SPACING)
+        chain_col.setSpacing(8)
         chain.viewLayout.addLayout(chain_col)
         self.chain_row = QHBoxLayout()
         self.chain_row.setSpacing(4)
@@ -522,7 +532,7 @@ class EditorInterface(QWidget):
         self.block_card = section_card("Bloc", self.block_glyph)
         right.addWidget(self.block_card)
         block_col = QVBoxLayout()
-        block_col.setSpacing(SPACING)
+        block_col.setSpacing(8)
         self.block_card.viewLayout.addLayout(block_col)
         top = QHBoxLayout()
         top.setSpacing(10)
@@ -571,9 +581,7 @@ class EditorInterface(QWidget):
         return e.preset if e else None
 
     def slot_title(self, i: int) -> str:
-        state, eid = self.wb.slot_state(i)
-        e = self.library.get(eid) if eid and state != UNKNOWN else None
-        return e.name if e else (self._names.get(i) or f"Preset {i + 1}")
+        return self.names.title(i)
 
     def importable_slots(self) -> list[int]:
         return [i for i in range(7) if self.wb.slot_state(i)[0] in (UNKNOWN, CHANGED)]
@@ -591,6 +599,14 @@ class EditorInterface(QWidget):
         self.refresh()
 
     def _on_entry_updated(self, _eid: str):
+        self.refresh()
+
+    def _on_names_changed(self):
+        """Un nom ou un état a changé ailleurs (renommage depuis le Dashboard, modification de l'ampli…)."""
+        sig = tuple((e.id, e.name) for e in self.library.entries())
+        if self._lib_sig is not None and sig != self._lib_sig:
+            self.library_panel.reload(select_id=self.sel_id, rebuild_tags=False)
+        self._lib_sig = sig
         self.refresh()
 
     def _on_failed(self, text: str):
@@ -682,7 +698,7 @@ class EditorInterface(QWidget):
     def default_import_name(self, i: int) -> str:
         saved = self.bank.slots[i].saved
         amp = self._cat.effects[3].model(saved.model(3)) if saved else None
-        return self._names.get(i) or (f"{amp.name} (emplacement {i + 1})" if amp else f"Emplacement {i + 1}")
+        return self.names.legacy(i) or (f"{amp.name} (emplacement {i + 1})" if amp else f"Emplacement {i + 1}")
 
     def import_slot(self, i: int):
         res = self.ask_info(f"Importer l'emplacement {i + 1} dans la bibliothèque", self.default_import_name(i),
@@ -745,6 +761,36 @@ class EditorInterface(QWidget):
             return
         if self.confirm_overwrite(slot, e.name, e.preset, self.send_notes(slot, e), "Envoyer"):
             self.service.send(e.id, slot)
+
+    def save_current(self) -> str:
+        """Ctrl+S : renvoie vers l'ampli la version actuelle du preset sélectionné, dans chaque emplacement où il est déjà
+        chargé mais en retard (« à renvoyer »). Pas de confirmation : c'est le même preset, la sauvegarde automatique de
+        l'ancien contenu reste faite. Un preset qui n'est dans aucun emplacement s'envoie avec « Envoyer vers… »."""
+        e = self.sel_entry()
+        if e is None:
+            text = "Aucun preset sélectionné"
+            self.info(text, "", 2000)
+            return text
+        slots = self.wb.entry_slots(e.id)
+        behind = [i for i, st in slots if st == AHEAD]
+        if not behind:
+            if any(st == SYNCED for _, st in slots):
+                text, more = f"« {e.name} » est à jour sur l'ampli", ""
+            elif any(st == CHANGED for _, st in slots):
+                text, more = "Emplacement modifié hors de Melos", "Utilise « Envoyer vers… » pour choisir d'écraser ou non."
+            else:
+                text, more = f"« {e.name} » n'est dans aucun emplacement", "Utilise « Envoyer vers… » pour le charger."
+            self.info(text, more, 2500)
+            return text
+        if not self.state.connected:
+            text = "Ampli non connecté : rien envoyé"
+            self.info(text, "La modification est enregistrée dans la bibliothèque : refais Ctrl+S une fois l'ampli connecté.", 3500)
+            return text
+        for i in behind:
+            self.service.send(e.id, i)
+        text = f"« {e.name} » renvoyé vers " + (f"l'emplacement {behind[0] + 1}" if len(behind) == 1 else "les emplacements " + ", ".join(str(i + 1) for i in behind))
+        self.info(text, "", 2500)
+        return text
 
     def request_copy(self, src: int, dst: int):
         p = self.bank.slots[src].saved
@@ -991,7 +1037,6 @@ class EditorInterface(QWidget):
     # ------------------------------------------------------------------ affichage
     def refresh(self):
         bank, cat = self.bank, self._cat
-        self._names = custom_slot_names()
         for i, card in enumerate(self.cards):
             state, eid = self.wb.slot_state(i)
             saved = bank.slots[i].saved

@@ -5,64 +5,78 @@ boutons — casque = isoler (solo), haut-parleur barré = couper (mute). Cliquer
 Mode « Original » : les boutons sont « intelligents » (cf. tabs/mixer.py) : grisés quand aucune version audio de Songsterr
 ne permet le réglage, verts au survol pour montrer TOUTES les pistes concernées, bleu (solo) / rouge (mute) une fois actifs.
 Mode « Synthèse » : tout est libre (plusieurs solos, plusieurs mutes) et chaque ligne a un curseur de volume.
+L'engrenage de l'en-tête ouvre les réglages audio du mode Original : version audio (vidéo) et association des pistes.
 Aucune barre de défilement horizontale : les textes sont rognés plutôt que de repousser les boutons.
 """
 
 from PySide6.QtCore import QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QSizePolicy, QScrollArea, QToolButton, QVBoxLayout, QWidget
-from qfluentwidgets import BodyLabel, CaptionLabel, FluentIcon, PushButton, Slider, isDarkTheme
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+from qfluentwidgets import qconfig
 
 from tabs.debug import dbg
 from tabs.mixer import Mix, MixModel, family
-
-FAMILY_STYLE = {      # icône, couleur
-    "vocals": (FluentIcon.MICROPHONE, "#ff6b9d"),
-    "guitar": (FluentIcon.MUSIC, "#ff9f43"),
-    "bass": (FluentIcon.MUSIC, "#c084fc"),
-    "drums": (FluentIcon.ALBUM, "#f7d154"),
-    "other": (FluentIcon.SPEAKERS, "#7dd3fc"),
-}
-SOLO_COLOR, MUTE_COLOR, PREVIEW_COLOR = "#4da3ff", "#ff5252", "#2ecc71"
+from ui import tab_icons
+from ui.tab_widgets import ChoiceModel, PopupCard, TabButton, TabSlider
+from ui.theme import INSTRUMENT_COLORS, card_style, mix, pal, rgba, scrollbar_qss
 
 
 class _Elided(QWidget):
-    """Texte rogné avec « … » plutôt que d'élargir la ligne."""
+    """Texte rogné avec « … » plutôt que d'élargir la ligne. `label_cls` : seul son nom compte (« Caption » = petit, grisé)."""
 
-    def __init__(self, label_cls, text: str, parent=None):
+    def __init__(self, label_cls, text: str, parent=None, fit: bool = False):
         super().__init__(parent)
-        self._label = label_cls("", self)
+        self._small = "Caption" in getattr(label_cls, "__name__", "")
+        self._strong = "Strong" in getattr(label_cls, "__name__", "")
         self._text = text
-        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self._fit = fit                                  # fit : prend la largeur de son texte (sinon : celle qu'on lui laisse)
+        self.setSizePolicy(QSizePolicy.Preferred if fit else QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.setMinimumWidth(0)
 
+    def _font(self) -> QFont:
+        f = self.font()
+        f.setPointSizeF(8.5 if self._small else 10)
+        if self._strong:
+            f.setWeight(QFont.Weight.DemiBold)
+        return f
+
+    def setText(self, text: str):
+        self._text = text
+        if self._fit:
+            self.updateGeometry()
+        self.update()
+
     def sizeHint(self):
-        return QSize(10, self._label.sizeHint().height())
+        return QSize(QFontMetrics(self._font()).horizontalAdvance(self._text) + 2 if self._fit else 10,
+                     QFontMetrics(self._font()).height() + 2)
 
-    def resizeEvent(self, ev):
-        super().resizeEvent(ev)
-        self._label.setGeometry(0, 0, self.width(), self.height())
-        self._label.setText(self._label.fontMetrics().elidedText(self._text, Qt.ElideRight, self.width()))
+    def paintEvent(self, ev):
+        p = QPainter(self)
+        f = self._font()
+        p.setFont(f)
+        p.setPen(QColor(pal()["muted" if self._small else "text"]))
+        p.drawText(QRectF(0, 0, self.width(), self.height()), Qt.AlignVCenter | Qt.AlignLeft,
+                   QFontMetrics(f).elidedText(self._text, Qt.ElideRight, self.width()))
 
 
-class StateButton(QToolButton):
-    """Bouton rond à états : off / on (couleur du mode) / aperçu (vert) / désactivé (grisé)."""
+class StateButton(TabButton):
+    """Bouton à états d'une ligne : repos / survol / actif (couleur du mode) / aperçu (vert, pistes concernées) / désactivé."""
     hovered = Signal(bool)
 
-    def __init__(self, icon, active_color: str, tip: str, parent=None):
-        super().__init__(parent)
-        self._icon, self._active = icon, QColor(active_color)
+    def __init__(self, icon_name: str, active_color: str, tip: str, parent=None):
+        super().__init__("", icon_name, "ghost", parent, color=active_color, height=30)
         self.on = False
         self.preview = False
         self.allowed = True
         self._tip = tip
-        self.setFixedSize(34, 34)
-        self.setCursor(Qt.PointingHandCursor)
         self.setToolTip(tip)
-        self.setAttribute(Qt.WA_Hover, True)
+        self.setFixedSize(30, 30)
 
     def set_state(self, on: bool, allowed: bool):
         self.on, self.allowed = on, allowed
+        self.setCheckable(True)
+        self.setChecked(on)
+        self.setEnabled(allowed or on)
         self.setCursor(Qt.PointingHandCursor if allowed else Qt.ForbiddenCursor)
         self.update()
 
@@ -79,30 +93,23 @@ class StateButton(QToolButton):
         super().leaveEvent(ev)
         self.hovered.emit(False)
 
-    def paintEvent(self, ev):
-        dark = isDarkTheme()
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        if self.preview:
-            bg, fg = QColor(PREVIEW_COLOR), QColor("white")
-        elif self.on:
-            bg, fg = QColor(self._active), QColor("white")
-        else:
-            bg = QColor(255, 255, 255, 22) if dark else QColor(0, 0, 0, 16)
-            fg = QColor("white") if dark else QColor("#222")
-        if not self.allowed and not self.on:
-            bg.setAlpha(bg.alpha() // 2)
-            fg.setAlpha(70)
-        p.setPen(Qt.NoPen)
-        p.setBrush(bg)
-        p.drawRoundedRect(QRectF(self.rect()).adjusted(1, 1, -1, -1), 9, 9)
-        self._icon.icon(color=fg).paint(p, self.rect().adjusted(8, 8, -8, -8))
+    def _colors(self):
+        if self.preview and not self.on:                       # aperçu : ce que ce clic mettrait en solo / muet
+            p = pal()
+            g = QColor(p["preview"])
+            bg = QColor(g); bg.setAlphaF(0.2)
+            bd = QColor(g); bd.setAlphaF(0.55)
+            return bg, mix(g, QColor(p["text"]), 0.2), bd
+        bg, fg, bd = super()._colors()
+        if not self.isEnabled() and not self.on:               # « pas possible » : à peine visible
+            fg = QColor(pal()["faint"]); fg.setAlphaF(0.55)
+        return bg, fg, bd
 
 
 VOLUME_MAX = 150                         # curseur de volume : 0 à 150 % (100 % au milieu du tiers droit)
 
 
-class _VolumeSlider(Slider):
+class _VolumeSlider(TabSlider):
     """Curseur de volume d'une piste ; double-clic = retour à 100 %."""
 
     def mouseDoubleClickEvent(self, ev):
@@ -118,27 +125,29 @@ class _Row(QFrame):
         super().__init__(parent)
         self.index = index
         self.displayable = bool(track.measures)         # la batterie n'a pas de tablature affichée
-        fam = family(track)
-        icon, self.color = FAMILY_STYLE[fam]
+        self.kind = tab_icons.instrument_kind(track.instrument, family(track))
+        self.color = INSTRUMENT_COLORS[self.kind]
         self.setObjectName("trackRow")
         self.setCursor(Qt.PointingHandCursor if self.displayable else Qt.ArrowCursor)
         lay = QHBoxLayout(self)
         lay.setContentsMargins(8, 6, 6, 6)
-        lay.setSpacing(8)
-        self.badge = QToolButton(self)                  # pastille colorée de la famille
-        self.badge.setEnabled(False)
+        lay.setSpacing(10)
+        self.badge = QFrame(self)                       # pastille de l'instrument : teinte douce + icône de sa couleur
         self.badge.setFixedSize(34, 34)
-        self.badge.setIcon(icon.icon(color=QColor("white")))
-        self.badge.setStyleSheet(f"QToolButton{{background:{self.color};border-radius:17px;border:none}}")
+        self.badge.setStyleSheet(f"QFrame{{background:{rgba(self.color, 0.16)};border-radius:10px}}")
+        self.badge.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._badge_icon = QWidget(self.badge)
+        self._badge_icon.setGeometry(0, 0, 34, 34)
+        self._badge_icon.paintEvent = self._paint_badge
         lay.addWidget(self.badge)
         sub = track.name.split(" | ")
-        self.title = _Elided(BodyLabel, track.instrument or "Piste", self)
-        self.subtitle = _Elided(CaptionLabel, " | ".join(sub[:3]), self)
+        self.title = _Elided(type("BodyLabel", (), {}), track.instrument or "Piste", self)
+        self.subtitle = _Elided(type("CaptionLabel", (), {}), " | ".join(sub[:3]), self)
         texts = QVBoxLayout()
         texts.setSpacing(0)
         texts.addWidget(self.title)
         texts.addWidget(self.subtitle)
-        self.volume = _VolumeSlider(Qt.Horizontal, self)         # visible seulement en mode « Synthèse », à la place du musicien
+        self.volume = _VolumeSlider(Qt.Horizontal, self, fill=self.color, groove=3)    # visible seulement en mode « Synthèse »
         self.volume.setRange(0, VOLUME_MAX)
         self.volume.setValue(100)
         self.volume.setFixedHeight(18)
@@ -147,11 +156,15 @@ class _Row(QFrame):
         self.volume.hide()
         texts.addWidget(self.volume)
         lay.addLayout(texts, 1)
-        self.solo = StateButton(FluentIcon.HEADPHONE, SOLO_COLOR, "Isoler cet instrument", self)
-        self.mute = StateButton(FluentIcon.MUTE, MUTE_COLOR, "Couper cet instrument", self)
+        self.solo = StateButton("headphones", "solo", "Isoler cet instrument", self)
+        self.mute = StateButton("mute", "mute", "Couper cet instrument", self)
         lay.addWidget(self.solo)
         lay.addWidget(self.mute)
         self.set_selected(False)
+
+    def _paint_badge(self, ev):
+        p = QPainter(self._badge_icon)
+        p.drawPixmap(8, 8, tab_icons.pixmap(tab_icons.instrument_icon_name(self.kind), self.color, 18))
 
     def _on_volume(self, value: int):
         self.volume.setToolTip(f"Volume de cette piste : {value} % (double-clic : 100 %)")
@@ -167,19 +180,76 @@ class _Row(QFrame):
             self.volume.setEnabled(self.displayable)
 
     def set_selected(self, on: bool):
-        c = QColor(self.color)
+        """Sélectionnée : fine bordure de la couleur de l'instrument + fond à peine teinté. Sinon : survol discret."""
         if on:
-            veil = f"rgba({c.red()},{c.green()},{c.blue()},0.20)"
-            self.setStyleSheet(f"#trackRow{{background:{veil};border-left:4px solid {self.color};border-radius:8px}}")
+            self.setStyleSheet(f"#trackRow{{background:{rgba(self.color, 0.09)};border:1px solid {rgba(self.color, 0.6)};"
+                               f"border-radius:11px}}")
         else:
-            hover = "rgba(255,255,255,0.06)" if isDarkTheme() else "rgba(0,0,0,0.05)"
-            self.setStyleSheet("#trackRow{background:transparent;border-left:4px solid transparent;border-radius:8px}"
-                               f"#trackRow:hover{{background:{hover}}}")
+            self.setStyleSheet("#trackRow{background:transparent;border:1px solid transparent;border-radius:11px}"
+                               f"#trackRow:hover{{background:{rgba('hover', 0.55)}}}")
 
     def mousePressEvent(self, ev):
         if ev.button() == Qt.LeftButton and self.displayable:
             self.clicked.emit(self.index)
         super().mousePressEvent(ev)
+
+
+class AudioSettingsPopup(PopupCard):
+    """Réglages audio du mode Original (engrenage de l'en-tête) : version audio à utiliser + association des pistes."""
+    mapping_wanted = Signal()
+
+    def __init__(self, choice: ChoiceModel, parent=None):
+        super().__init__(parent)
+        self.choice = choice
+        self.setFixedWidth(360)
+        self._lay = QVBoxLayout(self)
+        self._lay.setContentsMargins(12, 12, 12, 12)
+        self._lay.setSpacing(4)
+
+    def _clear(self):
+        while self._lay.count():
+            w = self._lay.takeAt(0).widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+
+    def rebuild(self):
+        self._clear()
+        head = _Elided(type("CaptionLabel", (), {}), "VERSION AUDIO", self)
+        self._lay.addWidget(head)
+        n = self.choice.count()
+        for i in range(n):
+            b = TabButton(self.choice.itemText(i), "check" if i == self.choice.currentIndex() else None, "ghost", self,
+                          height=32, align="left")
+            b.setCheckable(True)
+            b.setChecked(i == self.choice.currentIndex())
+            b.setToolTip(self.choice.itemText(i))
+            b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            b.clicked.connect(lambda _=False, i=i: self._pick(i))
+            self._lay.addWidget(b)
+        if n == 0:
+            self._lay.addWidget(_Elided(type("BodyLabel", (), {}), "Aucune version audio pour ce morceau", self))
+        sep = QFrame(self)
+        sep.setFixedHeight(1)
+        sep.setStyleSheet(f"background:{pal()['border']}")
+        self._lay.addSpacing(6)
+        self._lay.addWidget(sep)
+        self._lay.addSpacing(6)
+        m = TabButton("Associer les pistes audio…", "sliders", "soft", self, height=34)
+        m.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        m.setToolTip("Choisir à la main quelle piste audio correspond à chaque instrument")
+        m.clicked.connect(lambda: (self.close(), self.mapping_wanted.emit()))
+        self._lay.addWidget(m)
+        self.adjustSize()
+
+    def _pick(self, i: int):
+        self.close()
+        self.choice.setCurrentIndex(i)
+
+    def popup_for(self, widget: QWidget):
+        self.rebuild()
+        self.place_near(widget, align_right=False)
+        self.show()
 
 
 class TrackList(QScrollArea):
@@ -194,16 +264,34 @@ class TrackList(QScrollArea):
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)     # jamais de défilement horizontal
-        self.setFixedWidth(340)
-        self.setStyleSheet("QScrollArea{background:transparent}")
+        self.setFixedWidth(312)
+        self._apply_frame()
+        qconfig.themeChanged.connect(lambda *_: self._apply_frame())
         self._body = QWidget()
         self._body.setStyleSheet("background:transparent")
         self._lay = QVBoxLayout(self._body)
-        self._lay.setContentsMargins(0, 0, 0, 0)
-        self._lay.setSpacing(4)
-        self._map_btn = PushButton(FluentIcon.SETTING, "Associer les pistes audio", self._body)
-        self._map_btn.setToolTip("Choisir à la main quelle piste audio correspond à chaque instrument")
-        self._map_btn.clicked.connect(self.edit_mapping.emit)
+        self._lay.setContentsMargins(8, 8, 8, 8)
+        self._lay.setSpacing(3)
+        # en-tête : « Pistes » + nombre d'instruments, et l'engrenage des réglages audio (mode Original)
+        self._head = QWidget(self._body)
+        hl = QHBoxLayout(self._head)
+        hl.setContentsMargins(8, 0, 0, 2)
+        hl.setSpacing(8)
+        hl.addWidget(_Elided(type("StrongBodyLabel", (), {}), "Pistes", self._head, fit=True))
+        self._count = _Elided(type("CaptionLabel", (), {}), "", self._head, fit=True)
+        hl.addWidget(self._count)
+        hl.addStretch(1)
+        self._map_btn = TabButton("", "sliders", "ghost", self._head, height=30)
+        self._map_btn.setToolTip("Réglages audio : version audio (vidéo) à utiliser, association des pistes")
+        self._map_btn.clicked.connect(self._open_audio_settings)
+        hl.addWidget(self._map_btn)
+        self._map_btn.hide()
+        self.choice: ChoiceModel | None = None                # versions audio (alimenté par la page Partition)
+        self._audio_popup: AudioSettingsPopup | None = None
+        self._empty = _Elided(type("CaptionLabel", (), {}), "Charge un morceau pour voir ses instruments.", self._body)
+        self._lay.addWidget(self._head)
+        self._lay.addWidget(self._empty)
+        self._lay.addStretch(1)
         self.setWidget(self._body)
         self._rows: list[_Row] = []
         self._current = -1
@@ -214,12 +302,31 @@ class TrackList(QScrollArea):
         self._mute: set[int] = set()
         self._vol: dict[int, float] = {}
 
+    def _apply_frame(self):
+        self.setStyleSheet(card_style("TrackList") + scrollbar_qss())
+        self.viewport().setStyleSheet("background:transparent")
+        for r in getattr(self, "_rows", []):
+            r.set_selected(r.index == self._current)
+
+    def set_choice(self, choice: ChoiceModel):
+        """Modèle des versions audio, montré dans la fenêtre de l'engrenage."""
+        self.choice = choice
+
+    def _open_audio_settings(self):
+        if self.choice is None:
+            self.edit_mapping.emit()
+            return
+        if self._audio_popup is None:
+            self._audio_popup = AudioSettingsPopup(self.choice, self)
+            self._audio_popup.mapping_wanted.connect(self.edit_mapping.emit)
+        self._audio_popup.popup_for(self._map_btn)
+
     # ---------- construction ----------
     def set_tracks(self, tracks, current: int, syncs=None, overrides=None, synth_mix=None):
         """`synth_mix` : (solo, mute, volumes) mémorisés pour ce morceau (mode « Synthèse »), par indice de piste."""
         if synth_mix is not None:
             self._solo, self._mute, self._vol = set(synth_mix[0]), set(synth_mix[1]), dict(synth_mix[2])
-        self._lay.removeWidget(self._map_btn)
+        self._lay.removeWidget(self._head)
         for r in self._rows:
             r.setParent(None)
             r.deleteLater()
@@ -231,7 +338,11 @@ class TrackList(QScrollArea):
         if self._model:
             for line in self._model.describe(list(tracks)):
                 dbg("mix", line)
-        self._lay.addWidget(self._map_btn)
+        self._lay.addWidget(self._head)
+        self._empty.setVisible(not tracks)
+        self._count.setText(f"{len(tracks)}" if tracks else "")
+        if not tracks:
+            self._lay.addWidget(self._empty)
         for i, t in enumerate(tracks):
             row = _Row(i, t, self._body)
             row.clicked.connect(self._on_clicked)

@@ -105,7 +105,15 @@ class PresetLibrary:
         self.folder = Path(folder)
         self.folder.mkdir(parents=True, exist_ok=True)
         self._entries: dict[str, LibraryEntry] = {}
+        self.listeners: list = []     # callables sans argument, appelés après chaque écriture (peut venir d'un autre thread)
         self.reload()
+
+    def _notify(self):
+        for fn in list(self.listeners):
+            try:
+                fn()
+            except Exception:                                   # un écouteur défaillant ne doit jamais bloquer l'écriture
+                log.exception("écouteur de bibliothèque")
 
     def reload(self):
         self._entries.clear()
@@ -122,6 +130,7 @@ class PresetLibrary:
 
     def _write(self, e: LibraryEntry):
         _atomic_write(self._path(e.id), e.to_json())
+        self._notify()
 
     # --- Lecture ---
     def entries(self) -> list[LibraryEntry]:
@@ -218,6 +227,7 @@ class PresetLibrary:
             self._path(entry_id).unlink()
         except FileNotFoundError:
             pass
+        self._notify()
 
     def rename_tag(self, old: str, new: str):
         for e in list(self._entries.values()):

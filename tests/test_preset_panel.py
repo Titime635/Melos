@@ -45,7 +45,9 @@ assert panel._buttons[5]._active and not panel._buttons[2]._active
 print("2. changement de preset : boutons mis à jour en place : OK")
 
 # ---- 3. choix de présentation selon la place : les noms restent tant que la grille tient ----
-plan = pp.PresetPanel._plan
+_NAMES = [pp.default_name(i) for i in range(7)]
+def plan(w, h):
+    return pp.PresetPanel._plan(w, h, _NAMES)[:2]   # (mode, colonnes) ; la taille de police est testée à part
 assert plan(440, 230) == ("grid", 4)               # 4+3
 assert plan(440, 100) == ("grid", 4)
 assert plan(250, 200) == ("grid", 3)              # étroit : 3 colonnes, toujours des noms
@@ -78,16 +80,11 @@ assert strip or len(vis) == 7
 assert not hasattr(panel, "_rename_edit"), "la ligne de renommage a disparu (le crayon la remplace)"
 print("4. le module change réellement de présentation en se redimensionnant : OK")
 
-# ---- 4b. texte : plusieurs lignes aux espaces, police adaptée ----
-from PySide6.QtGui import QFont, QFontMetrics, QImage, QPainter
-img = QImage(120, 60, QImage.Format_ARGB32); img.fill(0)
-pt = QPainter(img); f = QFont(); f.setBold(True)
-from PySide6.QtCore import QRectF
-pp.PresetButton._draw_fitted(pt, f, QRectF(4, 4, 110, 50), "Greenday The Clash Live", 20)
-pt.end()
-assert 9 <= f.pixelSize() <= 20 and f.pixelSize() < 20, "la police s'adapte au nom long"
-box = QFontMetrics(f).boundingRect(0, 0, 110, 10000, int(Qt.AlignCenter | Qt.TextWordWrap), "Greenday The Clash Live")
-assert box.height() > QFontMetrics(f).height() * 1.5, "le nom long passe sur plusieurs lignes"
+# ---- 4b. texte : plusieurs lignes aux espaces, une seule police pour tous (fit_font_px) ----
+short = pp.fit_font_px(["Preset 1", "Clean"], 110, 50)
+long_ = pp.fit_font_px(["Greenday The Clash Live", "Clean"], 110, 50)
+assert short == pp.MAX_FONT_PX and long_ is not None and long_ < short, "la police s'adapte aux noms longs"
+assert pp.fit_font_px(["Supercalifragilisticexpialidocious"], 40, 30) is None, "illisible : on passe aux chiffres"
 print("4b. noms longs : retour à la ligne aux espaces et police réduite : OK")
 
 # ---- 5. renommage : popup (crayon / double-clic) ; clés internes 0-6 ----

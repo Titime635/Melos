@@ -8,12 +8,37 @@ propager (event.ignore()) pour que le parent (la QScrollArea de la fenêtre)
 scrolle normalement à la place.
 """
 
+from PySide6.QtCore import QEvent
 from qfluentwidgets import SpinBox, Slider, ComboBox
 
 
 class NoWheelSpinBox(SpinBox):
     def wheelEvent(self, event):
         event.ignore()
+
+    # Avec les Qt récents, le champ de texte du SpinBox de qfluentwidgets se retrouve large de 1 pixel (la valeur, « Manuelle »,
+    # « 4 mes. »... disparaît : ne reste qu'un trait à côté des flèches). On lui redonne toute la place libre à gauche des flèches.
+    def _fix_edit(self):
+        le = self.lineEdit()
+        if le is None or self.width() < 40 or not hasattr(self, "upButton"):
+            return
+        self.hBoxLayout.activate()
+        right = self.upButton.x() - 4 if self.upButton.isVisibleTo(self) and self.upButton.x() > 0 else self.width() - 8
+        le.setGeometry(10, 1, max(8, right - 10), max(8, self.height() - 2))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fix_edit()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._fix_edit()
+
+    def event(self, event):
+        out = super().event(event)
+        if event.type() in (QEvent.StyleChange, QEvent.FontChange, QEvent.LayoutRequest):
+            self._fix_edit()
+        return out
 
 
 class NoWheelSlider(Slider):

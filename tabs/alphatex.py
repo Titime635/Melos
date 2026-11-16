@@ -13,7 +13,7 @@ from .model import Beat, Measure, Note, Score, Track, tuplet_ratio
 
 NOTE_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"]
 SLIDES = {"shift": "ss", "legato": "sl", "into_from_below": "sib", "into_from_above": "sia",
-          "out_down": "sod", "out_up": "sou", "outdown": "sod", "outup": "sou"}
+          "out_down": "sod", "out_up": "sou", "outdown": "sod", "outup": "sou", "pick_down": "psd", "pick_up": "psu"}
 HARMONICS = {"natural": "nh", "artificial": "ah", "pinch": "ph", "tap": "th", "semi": "sh", "feedback": "fh"}
 
 
@@ -64,6 +64,16 @@ def _esc(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', "'").replace("\n", " ")
 
 
+KEYS_MAJOR = ["cb", "gb", "db", "ab", "eb", "bb", "f", "c", "g", "d", "a", "e", "b", "f#", "c#"]
+KEYS_MINOR = ["ab", "eb", "bb", "f", "c", "g", "d", "a", "e", "b", "f#", "c#", "g#", "d#", "a#"]
+
+
+def key_name(key: int, minor: bool = False) -> str:
+    """Armure -7..7 -> nom alphaTex (« gmajor », « eminor »...)."""
+    i = max(-7, min(7, int(key))) + 7
+    return (KEYS_MINOR[i] + "minor") if minor else (KEYS_MAJOR[i] + "major")
+
+
 def midi_to_alphatex(pitch: int) -> str:
     return f"{NOTE_NAMES[pitch % 12]}{pitch // 12 - 1}"
 
@@ -87,8 +97,14 @@ def _note(n: Note, strings: int, let_ring: bool = False) -> str:
         fx.append("hac")
     if n.ghost:
         fx.append("g")
-    if n.vibrato:
+    if n.vibrato_wide:
+        fx.append("vw")
+    elif n.vibrato:
         fx.append("v")
+    if n.lh_tap:
+        fx.append("lht")
+    if n.trill is not None:
+        fx.append(f"tr ({int(n.trill)} 16)")
     if n.staccato:
         fx.append("st")
     if n.slide in SLIDES:
@@ -113,7 +129,29 @@ def _duration_fx(b: Beat, program: int | None = None) -> str:
     if b.tuplet:
         fx.append("tu {} {}".format(*tuplet_ratio(b.tuplet)))     # forme à deux nombres : accepte aussi 4, 8, 11, 13...
     if b.grace:
-        fx.append("gr")
+        fx.append("gr ob" if b.grace == "onBeat" else "gr")
+    if b.fermata in ("short", "medium", "long"):
+        fx.append(f"fermata {b.fermata}")
+    if b.crescendo in ("cre", "dec"):
+        fx.append(b.crescendo)
+    if b.pick in ("down", "up"):
+        fx.append("sd" if b.pick == "down" else "su")
+    if b.brush in ("bu", "bd", "au", "ad"):
+        fx.append(b.brush)
+    if b.rasgueado:
+        fx.append(f"rasg {b.rasgueado}")
+    if b.tremolo:
+        fx.append(f"tp {max(1, min(3, int(b.tremolo)))}")
+    if b.whammy:
+        fx.append("tb (" + " ".join(str(round(t / 25)) for _, t in b.whammy) + ")")
+    if b.wah in ("open", "closed"):
+        fx.append("waho" if b.wah == "open" else "wahc")
+    if b.pedal in ("down", "up"):
+        fx.append("spd" if b.pedal == "down" else "spu")
+    if b.golpe in ("finger", "thumb"):
+        fx.append("glpf" if b.golpe == "finger" else "glpt")
+    if b.dead_slap:
+        fx.append("ds")
     if b.chord or b.text:
         parts = []
         if b.text:
@@ -204,10 +242,17 @@ def track_to_alphatex(track: Track, score: Score, with_header: bool = True) -> s
         if v > 0:
             lines.append("\\voice")
         bars = []
-        last_sig = first
+        last_sig, last_key = first, (0, False)
         for m in track.measures:
             pre = ""
             if v == 0:
+                if (m.key, m.key_minor) != last_key:
+                    pre += f"\\ks {key_name(m.key, m.key_minor)} "
+                    last_key = (m.key, m.key_minor)
+                if m.pickup:
+                    pre += "\\ac "
+                if m.double_bar:
+                    pre += "\\db "
                 if m.signature != last_sig:
                     pre += f"\\ts ({m.signature[0]} {m.signature[1]}) "
                     last_sig = m.signature

@@ -429,7 +429,7 @@ class SlotCard(_Card):
         self.title, self.subtitle = f"Preset {index + 1}", ""
         self.state, self.contains, self.current = "unread", False, False
         self._dbl = False
-        self.setFixedHeight(112)
+        self.setFixedHeight(92)
         self.setMinimumWidth(92)
 
     @property
@@ -527,7 +527,7 @@ class BlockChip(_Card):
         self._press = None
         self._dragging = False
         self._drop_side = None                     # None | "before" | "after"
-        self.setFixedHeight(118)
+        self.setFixedHeight(98)
         self.setMinimumWidth(62)
         self.setAcceptDrops(True)
 

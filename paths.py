@@ -11,5 +11,6 @@ APP_DIR = Path(__file__).resolve().parent
 SETTINGS_FILE = APP_DIR / "app_settings.json"
 PRESET_NAMES_FILE = APP_DIR / "ui" / "preset_names.json"   # historique : à côté de ui/preset_panel.py
 SETLISTS_FILE = APP_DIR / "setlists.json"
+SCORE_LIBRARY_FILE = APP_DIR / "score_library.json"   # historique + favoris de la page Partition
 LOG_FILE = APP_DIR / "melos_debug.log"      # journal des évènements (connexion, raccourcis, presets...)
 CRASH_FILE = APP_DIR / "melos_crash.log"    # piles de tous les threads si l'appli gèle ou plante

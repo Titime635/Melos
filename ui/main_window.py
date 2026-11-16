@@ -8,6 +8,8 @@ pas de conflit entre les deux : ce sont des instances de panneaux séparées
 mais branchées sur les mêmes AmpState/MidiSender, donc toujours synchronisées.
 """
 
+import logging
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QScrollArea
@@ -16,7 +18,7 @@ from qfluentwidgets import qconfig, FluentWindow, FluentIcon, InfoBar, InfoBarPo
 from midi.protocol import PORT_KEYWORD
 from state.amp_state import AmpState
 from midi.sender import MidiSender
-from ui.preset_panel import PresetPanel
+from ui.preset_panel import PresetPanel, SlotNames
 from ui.tuner_panel import TunerPanel
 from ui.drum_panel import DrumPanel
 from audio.audio_config import AudioConfig
@@ -58,7 +60,7 @@ class HomeInterface(QScrollArea):
     mais pointent vers les mêmes AmpState/MidiSender donc restent synchro.
     """
 
-    def __init__(self, state: AmpState, sender: MidiSender, loop_engine=None, audio=None, parent=None):
+    def __init__(self, state: AmpState, sender: MidiSender, loop_engine=None, audio=None, parent=None, names=None):
         super().__init__(parent)
         self.setObjectName("HomeInterface")  # requis par FluentWindow pour la navigation
         self.setWidgetResizable(True)
@@ -72,7 +74,7 @@ class HomeInterface(QScrollArea):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(16)
 
-        self.preset_panel = PresetPanel(state, sender)
+        self.preset_panel = PresetPanel(state, sender, names=names)
         layout.addWidget(self.preset_panel)
 
         self.tuner_panel = TunerPanel(state, sender)
@@ -93,7 +95,7 @@ class HomeInterface(QScrollArea):
 
         # Contrairement à loop_panel, la setlist parle bien au device (elle
         # envoie le preset de chaque étape) : elle a donc besoin de state+sender
-        self.setlist_panel = SetlistPanel(state, sender)
+        self.setlist_panel = SetlistPanel(state, sender, names=names)
         layout.addWidget(self.setlist_panel)
 
         layout.addStretch()
@@ -113,6 +115,7 @@ class MainWindow(FluentWindow):
         # zones « transparentes » du Mica (barre latérale des onglets) deviennent noires en thème clair. Fond uni à la place.
         self.setMicaEffectEnabled(False)
         self.setWindowTitle("Mighty Control")
+        self.stackedWidget.setAnimationEnabled(False)       # pas de glissement de page vers le haut au changement d'onglet : ça donne une impression de lenteur
         self.resize(1150, 900)
 
         self._state = state
@@ -129,21 +132,25 @@ class MainWindow(FluentWindow):
         self._focus_guard = FocusGuard(self)
         QApplication.instance().installEventFilter(self._focus_guard)
 
+        # Noms d'emplacements : UNE source pour le Dashboard, Classique, setlist et éditeur (cf ui/preset_panel.py)
+        self.names = SlotNames(editor[0], editor[1], self) if editor else SlotNames(parent=self)
+
         # Ajouté en premier : c'est la vue par défaut à l'ouverture
-        self.dashboard_interface = DashboardInterface(state, sender, self._loop_engine, self._audio)
+        self.dashboard_interface = DashboardInterface(state, sender, self._loop_engine, self._audio, names=self.names)
         self.addSubInterface(self.dashboard_interface, FluentIcon.LAYOUT, "Dashboard")
 
-        self.home_interface = HomeInterface(state, sender, self._loop_engine, self._audio)
+        self.home_interface = HomeInterface(state, sender, self._loop_engine, self._audio, names=self.names)
         self.addSubInterface(self.home_interface, FluentIcon.VIEW, "Classique")
 
         self.tab_interface = TabInterface()
+        self.tab_interface.set_amp(state, sender, self.names)   # changements de preset posés sur la partition
         self.addSubInterface(self.tab_interface, FluentIcon.MUSIC, "Partition")
 
         # Éditeur de presets du Mighty + bibliothèque (cf editor/ et ui/editor_interface.py)
         self._editor_service = editor[0] if editor else None
         self.editor_interface = None
         if editor:
-            self.editor_interface = EditorInterface(editor[0], editor[1], state)
+            self.editor_interface = EditorInterface(editor[0], editor[1], state, names=self.names)
             self.addSubInterface(self.editor_interface, FluentIcon.EDIT, "Éditeur")
 
         # --- Annuler / rétablir : une pile par page (cf state/undo.py) ---
@@ -156,6 +163,17 @@ class MainWindow(FluentWindow):
         for sequences, redo in ((("Ctrl+Z",), False), (("Ctrl+Y", "Ctrl+Shift+Z"), True)):
             for seq in sequences:
                 QShortcut(QKeySequence(seq), self, activated=lambda r=redo: self.undo_redo(r))
+
+        # Ctrl+S : sur la page Éditeur, renvoie vers l'ampli le preset édité (là où il est déjà chargé)
+        save = QShortcut(QKeySequence(QKeySequence.Save), self)
+        save.setContext(Qt.WindowShortcut)
+        save.activated.connect(self.save_current)
+
+        # F11 : plein écran fenêtré (sans bordure, sans barre de titre) ; F11 de nouveau revient à l'état d'avant
+        self._was_maximized = False
+        sc = QShortcut(QKeySequence(Qt.Key_F11), self)
+        sc.setContext(Qt.WindowShortcut)
+        sc.activated.connect(self.toggle_fullscreen)
 
         # --- Raccourcis clavier ---
         # Ils pilotent la vue (Dashboard / Classique) que l'utilisateur regarde ; sur la page
@@ -209,8 +227,7 @@ class MainWindow(FluentWindow):
     # --- Réglages remplacés (import / réinitialisation, page Réglages) ---
 
     def _reload_preset_names(self):
-        for panel in (self.dashboard_interface.preset_panel, self.home_interface.preset_panel):
-            panel.reload_names()
+        self.names.reload()   # les panneaux Presets, la setlist et l'éditeur suivent via `names.changed`
 
     def _apply_replaced_settings(self):
         cfg = load_settings()
@@ -220,6 +237,7 @@ class MainWindow(FluentWindow):
             self._monitor.apply_preferences()
         self.dashboard_interface.reload_from_settings()
         self._reload_preset_names()
+        self.tab_interface.library.reload()
         sc = cfg["shortcuts"]
         mode = sc.get("mode") or (MODE_GLOBAL if sc.get("enabled", True) else MODE_OFF)
         self._shortcuts.restore(mode, sc.get("bindings") or {})
@@ -237,6 +255,10 @@ class MainWindow(FluentWindow):
     def _apply_shortcuts_entry(self, kind: str, values) -> bool:
         return self._shortcuts_history.apply(values)
 
+    def save_current(self):
+        if not self._shortcuts.capturing and self.stackedWidget.currentWidget() is self.editor_interface:
+            self.editor_interface.save_current()
+
     def undo_redo(self, redo: bool = False) -> str:
         """Annule / rétablit le dernier changement de la page affichée. Renvoie le texte affiché."""
         if typing_in_app() or self._shortcuts.capturing:
@@ -246,6 +268,11 @@ class MainWindow(FluentWindow):
             return ""   # rien à annuler ici : les réglages s'appliquent tout de suite
         if page is self.editor_interface:
             text = self.editor_interface.undo_redo(redo)     # historique propre à l'éditeur (copies de travail)
+            InfoBar.info(title=text, content="", isClosable=False, duration=1500,
+                         position=InfoBarPosition.BOTTOM, parent=self)
+            return text
+        if page is self.tab_interface:
+            text = self.tab_interface.undo_redo(redo)        # historique propre à la page Partition
             InfoBar.info(title=text, content="", isClosable=False, duration=1500,
                          position=InfoBarPosition.BOTTOM, parent=self)
             return text
@@ -338,6 +365,41 @@ class MainWindow(FluentWindow):
     def _on_connection_changed(self, connected: bool):
         self._refresh_connection_indicator(connected)
         self._show_banner(connected)
+
+    def toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showMaximized() if self._was_maximized else self.showNormal()
+        else:
+            self._was_maximized = self.isMaximized()
+            self.showFullScreen()
+        bar = getattr(self, "titleBar", None)
+        if bar is not None:
+            bar.setVisible(not self.isFullScreen())
+
+    # --- Fenêtre maximisée qui déborde sur la barre des tâches ---
+    # Si le contenu a un instant dépassé la taille de l'écran (ex. liste de vidéos aux titres longs), Windows garde la
+    # fenêtre à la taille de l'écran ENTIER : la barre de lecture passe sous la barre des tâches. On détecte le
+    # débordement et on re-maximise, ce qui recalcule la taille sur la zone utile.
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.isMaximized() and not getattr(self, "_fixing_overflow", False):
+            QTimer.singleShot(0, self._fix_maximized_overflow)
+
+    def _fix_maximized_overflow(self):
+        screen = self.screen()
+        if screen is None or not self.isMaximized() or getattr(self, "_fixing_overflow", False):
+            return
+        avail = screen.availableGeometry()
+        g = self.geometry()
+        # « maximisée » d'après sa taille (l'état Qt peut être faux) : couvre presque tout l'écran mais dépasse la zone utile
+        if g.height() <= avail.height() + 1 and g.width() <= avail.width() + 16:
+            return
+        logging.getLogger("melos.window").warning("débordement détecté (%dx%d pour une zone utile de %dx%d) : correction",
+                                                  g.width(), g.height(), avail.width(), avail.height())
+        self._fixing_overflow = True
+        self.showNormal()
+        self.showMaximized()
+        QTimer.singleShot(400, lambda: setattr(self, "_fixing_overflow", False))
 
     def closeEvent(self, event):
         # Coupe proprement les flux audio des DEUX vues (instances séparées,

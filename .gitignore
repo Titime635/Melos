@@ -88,6 +88,7 @@ tempCodeRunnerFile.py
 # MELOS local data
 app_settings.json
 setlists.json
+score_library.json
 ui/preset_names.json
 ui/tuner_calibration.json
 tabs_cache/

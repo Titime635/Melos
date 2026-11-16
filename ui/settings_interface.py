@@ -402,12 +402,12 @@ class SettingsInterface(QScrollArea):
         body.addLayout(rrow)
         body.addWidget(self._note(
             "« Tout » remet tous les réglages à zéro (modules, raccourcis, périphériques…) et efface les noms "
-            "de presets. Les séquences de setlist ne sont pas touchées."))
+            "perso des emplacements. Les séquences de setlist, la bibliothèque de presets et les partitions ne sont pas touchées."))
         return card
 
     def _data_files(self) -> dict[str, "object"]:
         return {"settings": settings_mod.SETTINGS_FILE, "preset_names": NAMES_FILE,
-                "setlists": setlist_model.SETLISTS_FILE}
+                "setlists": setlist_model.SETLISTS_FILE, "score_library": paths.SCORE_LIBRARY_FILE}
 
     def _open_folder(self):
         self._open_path(settings_mod.SETTINGS_FILE.parent)
@@ -427,7 +427,8 @@ class SettingsInterface(QScrollArea):
         bundle = {"format": EXPORT_FORMAT, "version": 1,
                   "settings": load_settings(),
                   "preset_names": self._read_json(files["preset_names"]) or {},
-                  "setlists": self._read_json(files["setlists"])}
+                  "setlists": self._read_json(files["setlists"]),
+                  "score_library": self._read_json(files["score_library"])}
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(bundle, f, indent=2, ensure_ascii=False)
@@ -450,7 +451,7 @@ class SettingsInterface(QScrollArea):
             self._toast("Import impossible", str(exc), error=True)
             return False
         if not self._confirm("Importer ces réglages ?",
-                             "Tes réglages actuels (y compris noms de presets et setlists) seront remplacés."):
+                             "Tes réglages actuels (y compris noms de presets, setlists et favoris de partitions) seront remplacés."):
             return False
         files = self._data_files()
         # même fusion qu'au chargement : un export ancien reste valide, les clés manquantes reprennent leur défaut
@@ -460,15 +461,19 @@ class SettingsInterface(QScrollArea):
         if bundle.get("setlists") is not None:
             files["setlists"].write_text(json.dumps(bundle["setlists"], ensure_ascii=False, indent=2),
                                          encoding="utf-8")
+        if bundle.get("score_library") is not None:           # absent d'un export ancien : l'historique actuel reste
+            files["score_library"].write_text(json.dumps(bundle["score_library"], ensure_ascii=False, indent=2),
+                                              encoding="utf-8")
         self._after_replace("Réglages importés")
         return True
 
     def reset(self, what: str) -> bool:
         texts = {
             "dashboard": ("Réinitialiser le Dashboard ?", "Les modules reprennent leur place et taille d'origine."),
-            "names": ("Effacer les noms de presets ?", "Les presets reprennent leurs noms par défaut."),
-            "all": ("Tout réinitialiser ?", "Tous les réglages et noms de presets seront remis à zéro. "
-                                            "Les setlists sont conservées."),
+            "names": ("Effacer les noms de presets ?", "Les noms personnalisés des emplacements sont effacés. Les emplacements "
+                                              "liés à un preset de la bibliothèque gardent le nom de ce preset."),
+            "all": ("Tout réinitialiser ?", "Tous les réglages et noms perso d'emplacements seront remis à zéro. "
+                                            "Les setlists, la bibliothèque de presets et l'historique des partitions sont conservés."),
         }
         if what not in texts or not self._confirm(*texts[what]):
             return False

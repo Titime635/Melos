@@ -66,8 +66,9 @@ class StepsView(QWidget):
 
     step_clicked = Signal(int)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, names=None):
         super().__init__(parent)
+        self._names = names          # SlotNames (nom du preset quand l'étape n'a pas de label), optionnel
         self._steps: list[Step] = []
         self._index = 0
         self._enabled = True
@@ -87,8 +88,12 @@ class StepsView(QWidget):
         fit = max(0, int((self.height() - CURRENT_MIN_H + GAP) // (NEXT_H + GAP)))
         return min(2, n - 1, fit)
 
+    def _slot_name(self, step: Step) -> tuple[str, bool]:
+        """(nom du preset de l'étape, personnalisé ?) : celui des emplacements du Dashboard et de l'éditeur."""
+        return self._names.name(step.preset) if self._names is not None else (f"Preset {step.preset + 1}", False)
+
     def _step_title(self, step: Step) -> str:
-        return step.label or f"Preset {step.preset + 1}"
+        return step.label or self._slot_name(step)[0]
 
     def mousePressEvent(self, event):
         pos = event.position()
@@ -146,7 +151,7 @@ class StepsView(QWidget):
         p.setFont(_font(12))
         pos_w = QFontMetrics(p.font()).horizontalAdvance(pos_text) + 4
         p.drawText(QRectF(w - pos_w - 10, 6, pos_w, 16), Qt.AlignRight | Qt.AlignTop, pos_text)
-        two_lines = bool(step.label) and cur_h >= 62
+        two_lines = (bool(step.label) or self._slot_name(step)[1]) and cur_h >= 62   # sous-titre : « Preset N »
         p.setFont(title_font)
         title = QFontMetrics(title_font).elidedText(self._step_title(step), Qt.ElideRight, int(body.width() - pos_w - 6))
         title_rect = QRectF(body.left(), body.top(), body.width() - pos_w - 6, body.height() - (16 if two_lines else 0))
@@ -243,9 +248,10 @@ class StepRow(QFrame):
 class SetlistPanel(ModuleCard):
     adaptive = True
 
-    def __init__(self, state: AmpState, sender: MidiSender, parent=None):
+    def __init__(self, state: AmpState, sender: MidiSender, parent=None, names=None):
         super().__init__(parent, accent=ACCENT)
         self.setTitle("Setlist")
+        self._names = names
 
         self._state = state
         self._sender = sender
@@ -304,7 +310,9 @@ class SetlistPanel(ModuleCard):
         play = QVBoxLayout(self._play_w)
         play.setContentsMargins(0, 0, 0, 0)
         play.setSpacing(GAP + 2)
-        self._steps_view = StepsView()
+        self._steps_view = StepsView(names=self._names)
+        if self._names is not None:
+            self._names.changed.connect(self._refresh_current_step)
         self._steps_view.step_clicked.connect(self._player.go_to)
         play.addWidget(self._steps_view, stretch=1)
         nav = QHBoxLayout()

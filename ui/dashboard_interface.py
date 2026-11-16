@@ -63,7 +63,7 @@ TITLES = {
 class DashboardInterface(QWidget):
     layout_edited = Signal(object, object)   # (agencement avant, agencement après) — cf state/undo.py
 
-    def __init__(self, state: AmpState, sender: MidiSender, loop_engine=None, audio=None, parent=None):
+    def __init__(self, state: AmpState, sender: MidiSender, loop_engine=None, audio=None, parent=None, names=None):
         super().__init__(parent)
         self.setObjectName("DashboardInterface")
 
@@ -98,8 +98,8 @@ class DashboardInterface(QWidget):
         self._drum_panel.set_sync(self._loop_panel)  # batterie calée sur la mesure du looper
         self._tempo_panel = TempoPanel(state.transport)
         self._tempo_panel.attach_loop_panel(self._loop_panel)
-        self._setlist_panel = SetlistPanel(state, sender)
-        self._preset_panel = PresetPanel(state, sender)
+        self._setlist_panel = SetlistPanel(state, sender, names=names)
+        self._preset_panel = PresetPanel(state, sender, names=names)
         panels = {
             "presets": self._preset_panel,
             "tuner": TunerPanel(state, sender),

@@ -62,6 +62,26 @@ def start_freeze_watchdog(crash_fh) -> QTimer:
     return timer
 
 
+def start_stall_probe() -> QTimer:
+    """Diagnostic : note dans le journal tout blocage du thread Qt > 150 ms (une coupure audio périodique peut venir de là)."""
+    import time
+    log = logging.getLogger("melos.stall")
+    state = {"last": time.monotonic(), "t0": time.monotonic()}
+
+    def tick():
+        now = time.monotonic()
+        gap = (now - state["last"]) * 1000
+        state["last"] = now
+        if gap > 150:
+            log.warning("thread Qt bloqué %.0f ms (attendu 20) à %.1f min de lancement", gap, (now - state["t0"]) / 60)
+
+    timer = QTimer()
+    timer.setInterval(20)
+    timer.timeout.connect(tick)
+    timer.start()
+    return timer
+
+
 def warn_missing_deps():
     """Fichiers téléchargés (hors git) absents, p. ex. après un clone sur un autre ordinateur : on dit comment les installer."""
     try:
@@ -84,9 +104,13 @@ def main():
     except Exception as exc:
         print("Énumération des ports MIDI impossible :", exc)
 
+    # Doit précéder la création de QApplication : QtWebEngine partage alors son contexte GPU avec Qt dès le départ
+    # (sinon la fenêtre « clignote » en blanc à la première apparition d'une vue web).
+    QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
     app = QApplication(sys.argv)
     apply_theme(load_settings()["ui"]["theme"])  # « auto » suit le thème clair/sombre du système
     watchdog = start_freeze_watchdog(crash_fh)  # noqa: F841 (garde la référence)
+    stall_probe = start_stall_probe()  # noqa: F841
 
     state = AmpState()  # restaure preset/batterie/tuner depuis app_settings.json
 
@@ -129,7 +153,13 @@ def main():
     # --- UI ---
     shortcuts = ShortcutManager()  # touches globales : aucune par défaut, réglées dans l'onglet Raccourcis
     window = MainWindow(state, sender, shortcuts, monitor, editor)
-    window.show()
+    # Lancement maximisé, SANS flash blanc : Windows affiche d'abord un cadre blanc tant que Qt n'a pas peint la fenêtre
+    # (la première peinture est longue : tous les onglets + la vue web). On la fait donc fenêtre invisible (opacité 0),
+    # puis on la révèle une fois peinte.
+    window.setWindowOpacity(0.0)
+    window.showMaximized()
+    app.processEvents()
+    QTimer.singleShot(60, lambda: window.setWindowOpacity(1.0))
 
     exit_code = app.exec()
 

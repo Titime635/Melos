@@ -266,7 +266,8 @@ class AudioPlayer:
 
     def set_volume(self, volume_0_1: float):
         self._volume = max(0.0, min(1.0, volume_0_1)) * 100
-        self._send(c="volume", v=self._volume)
+        if self._proc is not None and self._proc.poll() is None:     # sinon : envoyé au chargement (cf _resolve), sans lancer mpv pour rien
+            self._send(c="volume", v=self._volume)
 
     def stop(self):
         with self._lock:

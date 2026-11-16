@@ -30,3 +30,4 @@ Features V4 : Hardware et Audio pro
 
 Features V5 : IA
 - Connection de l'app à Jarvis pour amener l'app vers d'autres dimensions <=> Véritable ochestrateur de l'appli
+- Auto-config des réglages de l'ampli

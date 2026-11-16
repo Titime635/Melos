@@ -126,6 +126,22 @@ def main():
         # l'association survit à un redémarrage
         wb2 = Workbench(bank, PresetLibrary(Path(tmp) / "lib"), SlotLinks(Path(tmp) / "links.json"))
         assert wb2.slot_state(2) == ("ahead", ea.id)
+        # Ctrl+S : renvoie la version éditée là où le preset est déjà chargé, sans confirmation
+        _confirm = w.confirm_overwrite
+        w.confirm_overwrite = lambda *a, **k: (_ for _ in ()).throw(AssertionError("Ctrl+S ne demande pas de confirmation"))
+        txt = w.save_current()
+        pump(app, lambda: amp.flash[2].wire_bytes() == lib.get(ea.id).preset.wire_bytes())
+        pump(app)
+        assert "renvoy" in txt and wb.slot_state(2) == ("synced", ea.id) and amp.cur == 5
+        n = len(amp.log)
+        assert "à jour" in w.save_current()
+        pump(app)
+        assert len(amp.log) == n                                    # déjà à jour : rien n'est renvoyé
+        w.confirm_overwrite = _confirm
+        w._rows[0].slider.setValue(45)                              # de nouveau en retard pour la suite
+        pump(app, lambda: lib.get(ea.id).preset.param(3, 0) == 45)
+        pump(app)
+        assert wb.slot_state(2) == ("ahead", ea.id)
 
         # --- Filtre « sur le Mighty / hors Mighty » : on clique vraiment sur les onglets (le clic transmet « checked »)
         panel.scope_bar.items["on"].click()

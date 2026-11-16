@@ -139,3 +139,12 @@ assert "{instrument 90" in to_alphatex(_sc)
 from tabs import server as _srv
 assert _srv.soundfont_url("n'existe-pas.sf2").startswith("/alphatab/soundfont/") and _srv.soundfont_installed()
 print("test_tabs OK")
+# --- synchro : un point par demi-mesure (6/4) -> on prend un point sur deux
+from tabs.sync import build_bar_starts as _bbs, stride_of as _stride
+_exp = [6 * 60000.0 / 120] * 8                      # 6/4 à 120 : 3 s par mesure
+_half = [i * 1.5 for i in range(16)]                # points toutes les 1,5 s
+assert _stride(_half, 8, _exp) == 2
+assert _bbs(_half, 8, _exp) == [i * 3000.0 for i in range(8)]
+assert _stride([i * 3.0 for i in range(8)], 8, _exp) == 1                     # normal : inchangé
+assert _stride([i * 3.0 for i in range(16)], 8, _exp) == 1                    # 2x plus de points mais durées cohérentes (reprises) : inchangé
+print("synchro demi-mesure OK")

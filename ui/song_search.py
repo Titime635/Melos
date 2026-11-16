@@ -7,17 +7,18 @@ Un lien Songsterr collé dans le champ reste accepté tel quel.
 import logging
 
 from PySide6.QtCore import QPoint, QSize, QThread, Qt, Signal
-from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QAbstractItemView, QFrame, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
-from qfluentwidgets import BodyLabel, CaptionLabel, LineEdit, isDarkTheme
+from PySide6.QtWidgets import QAbstractItemView, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
+from qfluentwidgets import BodyLabel, CaptionLabel
 
 from tabs.client import SongHit, TabError, search_songs
 from tabs.debug import dbg
+from ui import tab_icons
+from ui.theme import INSTRUMENT_COLORS, pal, qc, rgba, scrollbar_qss
 from ui.track_list import _Elided
 
 log = logging.getLogger("melos.tabs")
 
-ROW_H = 54
+ROW_H = 56
 MAX_ROWS = 8                                  # au-delà, la liste défile (contenu qui doit défiler)
 
 
@@ -44,44 +45,50 @@ class SearchWorker(QThread):
             self.failed.emit(self._token, f"{type(exc).__name__}: {exc}")
 
 
-class SearchEdit(LineEdit):
-    """Champ de saisie qui laisse passer les flèches / Entrée / Échap à la liste de résultats."""
-    move = Signal(int)                        # -1 = haut, +1 = bas
-    accept = Signal()                         # Entrée sur un résultat surligné
-    dismiss = Signal()                        # Échap ou perte du focus
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.popup_open = False
-
-    def keyPressEvent(self, ev):
-        if self.popup_open:
-            if ev.key() in (Qt.Key_Down, Qt.Key_Up):
-                self.move.emit(1 if ev.key() == Qt.Key_Down else -1)
-                return
-            if ev.key() in (Qt.Key_Return, Qt.Key_Enter):
-                self.accept.emit()
-                return
-            if ev.key() == Qt.Key_Escape:
-                self.dismiss.emit()
-                return
-        super().keyPressEvent(ev)
-
-    def focusOutEvent(self, ev):
-        super().focusOutEvent(ev)
-        self.dismiss.emit()
+def _kind_of(name: str) -> str:
+    """Famille d'affichage d'un nom d'instrument de résultat de recherche (« Distortion Guitar » → guitar…)."""
+    n = (name or "").lower()
+    for kind, words in (("vocals", ("vocal", "voice", "voix", "choir", "singer")), ("drums", ("drum", "perc", "batter")),
+                        ("bass", ("bass",)), ("guitar", ("guitar", "banjo-gt"))):
+        if any(w in n for w in words):
+            return kind
+    return tab_icons.instrument_kind(name, "other")
 
 
 class _Row(QWidget):
+    """Une ligne de résultat : pastille de l'instrument principal, titre / artiste, puces des instruments présents."""
+
     def __init__(self, hit: SongHit, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(12, 6, 12, 6)
-        lay.setSpacing(0)
-        lay.addWidget(_Elided(BodyLabel, hit.title, self))
-        sub = hit.artist + (f"  ·  {', '.join(hit.tracks[:4])}" if hit.tracks else "")
-        lay.addWidget(_Elided(CaptionLabel, sub, self))
+        kinds: list[str] = []
+        for t in hit.tracks:
+            k = _kind_of(t)
+            if k not in kinds:
+                kinds.append(k)
+        main = kinds[0] if kinds else "other"
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(10, 6, 12, 6)
+        lay.setSpacing(10)
+        badge = QLabel(self)
+        badge.setFixedSize(34, 34)
+        badge.setAlignment(Qt.AlignCenter)
+        color = INSTRUMENT_COLORS.get(main, INSTRUMENT_COLORS["other"])
+        badge.setStyleSheet(f"background:{rgba(color, 0.16)};border-radius:9px")
+        badge.setPixmap(tab_icons.pixmap(tab_icons.instrument_icon_name(main), color, 18))
+        lay.addWidget(badge)
+        col = QVBoxLayout()
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(0)
+        col.addWidget(_Elided(BodyLabel, hit.title, self))
+        col.addWidget(_Elided(CaptionLabel, hit.artist, self))
+        lay.addLayout(col, 1)
+        for k in kinds[:5]:                    # puces : un instrument = une icône colorée (survol → nom via l'info-bulle de la ligne)
+            ic = QLabel(self)
+            ic.setFixedSize(18, 18)
+            ic.setPixmap(tab_icons.pixmap(tab_icons.instrument_icon_name(k), INSTRUMENT_COLORS.get(k, INSTRUMENT_COLORS["other"]), 14))
+            ic.setAlignment(Qt.AlignCenter)
+            lay.addWidget(ic)
 
 
 class SearchPopup(QListWidget):
@@ -103,12 +110,12 @@ class SearchPopup(QListWidget):
         self._apply_theme()
 
     def _apply_theme(self):
-        dark = isDarkTheme()
-        bg, border = ("#2b2c33", "#43444e") if dark else ("#ffffff", "#cfd0d8")
-        sel = "rgba(77,163,255,0.28)"
-        self.setStyleSheet(f"QListWidget{{background:{bg};border:1px solid {border};border-radius:8px;outline:0}}"
-                           f"QListWidget::item{{border-radius:6px}}"
-                           f"QListWidget::item:selected{{background:{sel}}}")
+        p = pal()                                   # niveau « relief » : la liste flotte au-dessus de la page
+        self.setStyleSheet(f"QListWidget{{background:{p['raised']};border:1px solid {p['border']};border-radius:12px;"
+                           f"outline:0;padding:4px}}"
+                           f"QListWidget::item{{border-radius:8px;margin:1px 0}}"
+                           f"QListWidget::item:selected{{background:{rgba('accent', 0.16)}}}"
+                           + scrollbar_qss(8))
 
     def _clicked(self, item):
         hit = item.data(Qt.UserRole)
@@ -121,7 +128,7 @@ class SearchPopup(QListWidget):
             item = QListWidgetItem(message or "Aucun résultat")
             item.setFlags(Qt.NoItemFlags)
             item.setSizeHint(QSize(10, 40))
-            item.setForeground(QColor("#9a9aa6"))
+            item.setForeground(qc("muted"))
             self.addItem(item)
             return
         for h in hits:

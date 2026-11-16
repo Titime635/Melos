@@ -27,6 +27,9 @@ class Note:
     slide: str | None = None          # shift / legato / into_from_below / ...
     harmonic: str | None = None       # natural / artificial / pinch / tap / semi / feedback
     bend: list[tuple[int, int]] | None = None   # [(position 0-60, hauteur en 1/100 de ton)]
+    vibrato_wide: bool = False        # vibrato large (en plus de `vibrato`, qui est le léger)
+    trill: int | None = None          # case de la note alternée du trille
+    lh_tap: bool = False              # tapping (main gauche)
 
 
 @dataclass
@@ -43,6 +46,17 @@ class Beat:
     velocity: str | None = None       # ppp ... fff
     grace: str | None = None          # beforeBeat / onBeat
     lyrics: str | None = None         # syllabe(s) chantée(s) sur ce temps
+    fermata: str | None = None        # short / medium / long
+    crescendo: str | None = None      # cre / dec : soufflet qui commence sur ce temps
+    pick: str | None = None           # down / up : coup de médiator
+    brush: str | None = None          # bu / bd (balayage) / au / ad (arpège), vers le haut / le bas
+    rasgueado: str | None = None      # motif de rasgueado (ii, mi, ...)
+    tremolo: int = 0                  # trémolo de médiator : 0 = aucun, 1 à 3 barres
+    whammy: list[tuple[int, int]] | None = None   # levier : [(position 0-60, hauteur en 1/100 de ton)]
+    wah: str | None = None            # open / closed : pédale wah
+    pedal: str | None = None          # down / up : pédale de sustain
+    golpe: str | None = None          # finger / thumb : coup sur la table
+    dead_slap: bool = False           # coup mort (étouffé, frappé)
 
     @property
     def length(self) -> Fraction:
@@ -83,6 +97,9 @@ class Measure:
     repeat_end: int = 0               # nombre de passages (0 = pas de reprise)
     alt_ending: list[int] = field(default_factory=list)
     double_bar: bool = False
+    key: int = 0                      # armure : -7 (7 bémols) à 7 (7 dièses)
+    key_minor: bool = False
+    pickup: bool = False              # mesure d'anacrouse (plus courte que la mesure)
 
     @property
     def length(self) -> Fraction:
