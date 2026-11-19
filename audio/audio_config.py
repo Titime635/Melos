@@ -275,6 +275,9 @@ class AudioConfig(QObject):
                      self._api or "?", self._blocksize,
                      (round(lat["input_ms"], 1), round(lat["output_ms"], 1)) if lat else "?")
             self._apply_system_volume()
+        else:
+            log.warning("flux audio non ouvert : API=%s, entrée=%s, sortie=%s, tampon=%d, exclusif=%s",
+                        self._api or "?", self.input_name, self.output_name, self._blocksize, self._exclusive)
         self.engine_restarted.emit(ok)
         return ok
 

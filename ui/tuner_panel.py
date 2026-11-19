@@ -26,21 +26,17 @@ from midi.sender import MidiSender
 from state.amp_state import AmpState
 from ui import looper_widgets as lw
 from ui.module_card import MODULE_COLORS, ModuleCard
+from ui.theme import ON_SOFT, style_popup
 from ui.popup_utils import show_popup_under
 from ui.power_pill import text_color
 from ui.tuner_widgets import ForkToggle, StringChip, TunerGauge, _font, _faint
-from ui.widgets import NoWheelSpinBox
+from ui.widgets import NoWheelDoubleSpinBox, NoWheelSpinBox
 
 ACCENT = MODULE_COLORS["tuner"]
-ON_ACCENT = "#1b1b1b"
+ON_ACCENT = ON_SOFT
 GAP = 8
 CHIP_H = 40
 ROW_H = 34
-
-
-class NoWheelDoubleSpinBox(QDoubleSpinBox):
-    def wheelEvent(self, event):
-        event.ignore()
 
 
 class TuningItem(QAbstractButton):
@@ -142,8 +138,7 @@ class TunerPanel(ModuleCard):
     def _build_settings_popup(self):
         popup = QFrame(self, Qt.Popup)
         popup.setObjectName("TunerSettingsPopup")
-        popup.setStyleSheet("#TunerSettingsPopup { background: palette(window); "
-                            "border: 1px solid rgba(128,128,128,0.45); border-radius: 8px; }")
+        style_popup(popup)
         v = QVBoxLayout(popup)
         v.setContentsMargins(16, 12, 16, 14)
         v.setSpacing(8)
@@ -203,8 +198,7 @@ class TunerPanel(ModuleCard):
     def _build_tuning_popup(self):
         popup = QFrame(self, Qt.Popup)
         popup.setObjectName("TunerTuningPopup")
-        popup.setStyleSheet("#TunerTuningPopup { background: palette(window); "
-                            "border: 1px solid rgba(128,128,128,0.45); border-radius: 10px; }")
+        style_popup(popup)
         popup.setFixedWidth(420)
         v = QVBoxLayout(popup)
         v.setContentsMargins(10, 10, 10, 10)

@@ -12,17 +12,19 @@ import math
 from PySide6.QtCore import Qt, Signal, QPointF, QRectF, QSize, QVariantAnimation
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QPolygonF, QRadialGradient
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSizePolicy, QWidget
-from qfluentwidgets import BodyLabel, FluentIcon, ToggleButton, TransparentToolButton, isDarkTheme, qconfig
+from qfluentwidgets import BodyLabel, FluentIcon, ToggleButton, TransparentToolButton, qconfig
 
 from ui import icons
+from ui.theme import MODULE_COLORS, ON_SOFT, STATE_COLORS as _STATES, accent_fg, pal, qc
 from ui.widgets import NoWheelSlider
 
-REC = "#e74c3c"
-OVERDUB = "#f39c12"
-PLAY = "#2ecc71"
-WAIT = "#3b9eff"
-NEUTRAL = "#8a8a8a"
-ACCENT = "#DF74D6"
+# couleurs d'état : palette douce commune (ui/theme.py)
+REC = _STATES["rec"]
+OVERDUB = _STATES["overdub"]
+PLAY = _STATES["play"]
+WAIT = _STATES["wait"]
+NEUTRAL = _STATES["neutral"]
+ACCENT = MODULE_COLORS["loop"]
 
 STATE_COLORS = {
     "idle": NEUTRAL, "counting_in": WAIT, "recording": REC, "playing": PLAY,
@@ -42,6 +44,15 @@ class TransportButton(QPushButton):
         super().__init__(parent)
         self._kind, self._label, self._color = kind, text, color
         self._active = False
+        self._current = False          # c'est l'état en cours du looper : bouton teinté + halo qui pulse doucement
+        self._pulse = 0.0
+        self._anim = QVariantAnimation(self)
+        self._anim.setStartValue(0.0)
+        self._anim.setKeyValueAt(0.5, 1.0)
+        self._anim.setEndValue(0.0)
+        self._anim.setDuration(1500)
+        self._anim.setLoopCount(-1)
+        self._anim.valueChanged.connect(self._on_pulse)
         self._compact = False
         self.setCursor(Qt.PointingHandCursor)
         self.setMinimumHeight(40)
@@ -59,6 +70,53 @@ class TransportButton(QPushButton):
             self._active = active
         self._restyle()
 
+    def set_current(self, current: bool):
+        """Marque le bouton de l'état en cours (Rec / Overdub / Play) : fond plus marqué et halo qui pulse."""
+        if current == self._current:
+            return
+        self._current = current
+        if current and self.isVisible():
+            self._anim.start()
+        else:
+            self._anim.stop()
+            self._pulse = 0.0
+        self._restyle()
+        self.update()
+
+    def _on_pulse(self, value):
+        self._pulse = float(value)
+        self.update()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._current and self._anim.state() != QVariantAnimation.Running:
+            self._anim.start()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._anim.pause() if self._anim.state() == QVariantAnimation.Running else None
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self._current or not self.isEnabled():
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        if self._active:                    # bouton plein (Stop pendant l'enregistrement) : reflet blanc qui respire
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(255, 255, 255, int(46 * self._pulse)))
+            p.drawRoundedRect(QRectF(self.rect()).adjusted(1, 1, -1, -1), 8, 8)
+            p.end()
+            return
+        c = QColor(self._color)
+        c.setAlphaF(0.35 + 0.5 * self._pulse)
+        pen = QPen(c)
+        pen.setWidthF(2.2)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(1.1, 1.1, -1.1, -1.1), 8, 8)
+        p.end()
+
     def set_compact(self, compact: bool):
         self._compact = compact
         self._restyle()
@@ -68,21 +126,24 @@ class TransportButton(QPushButton):
         self._restyle()
 
     def _restyle(self):
-        fg = "#ffffff" if self._active else self._color
+        fg = ON_SOFT if self._active else self._color
         self.setIcon(icons.transport_icon(self._kind, fg if self.isEnabled() else NEUTRAL))
         self.setText("" if self._compact else self._label)
         self.setToolTip(self._label)
-        text_color = "#ffffff" if self._active else ("#e8e8e8" if isDarkTheme() else "#202020")
+        p = pal()
+        text_color = ON_SOFT if self._active else p["text"]
         if self._active:
             bg, border = self._color, self._color
+        elif self._current:
+            bg, border = _rgba(self._color, 0.26), _rgba(self._color, 0.7)
         else:
-            bg, border = _rgba(self._color, 0.16), _rgba(self._color, 0.7)
+            bg, border = _rgba(self._color, 0.14), _rgba(self._color, 0.45)
         self.setStyleSheet(
-            f"QPushButton {{ background: {bg}; border: 1px solid {border}; border-radius: 7px;"
+            f"QPushButton {{ background: {bg}; border: 1px solid {border}; border-radius: 8px;"
             f" color: {text_color}; font-weight: 600; padding: 4px 8px; }}"
             f"QPushButton:hover {{ background: {self._color if self._active else _rgba(self._color, 0.28)}; }}"
-            f"QPushButton:disabled {{ background: rgba(128,128,128,0.10); border: 1px solid rgba(128,128,128,0.25);"
-            f" color: rgba(128,128,128,0.8); }}"
+            f"QPushButton:disabled {{ background: {p['raised']}; border: 1px solid {p['border']};"
+            f" color: {p['faint']}; }}"
         )
 
 
@@ -92,8 +153,8 @@ class PositionBar(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(30)
-        self.setMaximumHeight(46)
+        self.setMinimumHeight(36)
+        self.setMaximumHeight(54)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._snap = {"state": "idle", "pending": "", "beats": 4, "bars": 0, "frac": 0.0, "beat": -1,
                       "bar": 0, "active": False}
@@ -111,16 +172,16 @@ class PositionBar(QWidget):
         w, h = self.width(), self.height()
         rect = QRectF(0.5, 0.5, w - 1, h - 1)
         color = QColor(STATE_COLORS.get(snap["state"], NEUTRAL))
-        fg = QColor("#e8e8e8" if isDarkTheme() else "#202020")
+        fg = qc("text")
 
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(128, 128, 128, 36))
+        p.setBrush(qc("raised"))
         p.drawRoundedRect(rect, 7, 7)
 
         bars, beats = snap["bars"], max(1, snap["beats"])
         if snap["active"] or snap["state"] == "stopped":
             fill = QColor(color)
-            fill.setAlpha(70)
+            fill.setAlpha(92)
             p.setBrush(fill)
             p.drawRoundedRect(QRectF(0.5, 0.5, max(0.0, (w - 1) * snap["frac"]), h - 1), 7, 7)
 
@@ -129,7 +190,7 @@ class PositionBar(QWidget):
         for i in range(1, total):
             x = w * i / total
             strong = i % beats == 0
-            pen = QPen(QColor(128, 128, 128, 150 if strong else 70))
+            pen = QPen(qc("faint") if strong else qc("border"))
             pen.setWidthF(1.6 if strong else 1.0)
             p.setPen(pen)
             p.drawLine(int(x), int(h * (0.18 if strong else 0.55)), int(x), h - 4)
@@ -137,9 +198,10 @@ class PositionBar(QWidget):
         if snap["active"]:
             x = (w - 1) * snap["frac"]
             pen = QPen(color)
-            pen.setWidthF(2.4)
+            pen.setWidthF(3.2)
+            pen.setCapStyle(Qt.RoundCap)
             p.setPen(pen)
-            p.drawLine(int(x), 3, int(x), h - 3)
+            p.drawLine(int(x), 4, int(x), h - 4)
 
         font = QFont(self.font())
         font.setBold(True)
@@ -156,7 +218,7 @@ class PositionBar(QWidget):
             p.setPen(QColor(WAIT))
             p.drawText(QRectF(0, 0, w - 10, h), Qt.AlignVCenter | Qt.AlignRight, self._pending_text)
         elif bars:
-            p.setPen(QColor(128, 128, 128, 220))
+            p.setPen(qc("muted"))
             p.drawText(QRectF(0, 0, w - 10, h), Qt.AlignVCenter | Qt.AlignRight,
                        f"{bars} mesure{'s' if bars > 1 else ''}")
         p.end()
@@ -166,8 +228,8 @@ class BeatDots(QWidget):
     """Une pastille par temps de la mesure. Le temps courant s'allume d'un coup puis s'éteint en fondu
     jusqu'au suivant, avec un halo ; le temps 1 est plus gros et d'une autre couleur."""
 
-    FIRST = QColor(ACCENT)
-    OTHER = QColor("#8f7cf2")
+    FIRST = QColor(MODULE_COLORS["tempo"])       # 1er temps : la couleur du module Tempo
+    OTHER = QColor("#5b9bff")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -232,7 +294,7 @@ class PillButton(QPushButton):
     décompte, allumées au fil du décompte), "tap" (flash à chaque appui), "" (texte seul)."""
 
     def __init__(self, text: str, color: str, kind: str = "", checkable: bool = False,
-                 on_text: str = "#ffffff", parent=None):
+                 on_text: str = ON_SOFT, parent=None):
         super().__init__(parent)
         self._text, self._color, self._kind, self._on_text = text, QColor(color), kind, QColor(on_text)
         self._swing = 0          # -1 / 0 / 1 : côté du balancier
@@ -299,26 +361,25 @@ class PillButton(QPushButton):
         enabled = self.isEnabled()
         on = self.isChecked() or self._flash > 0.0
         hover = self.underMouse() and enabled
-        theme_fg = QColor("#e8e8e8" if isDarkTheme() else "#202020")
+        theme_fg = qc("text")
 
         if not enabled:
-            bg, border, fg = QColor(128, 128, 128, 28), QColor(128, 128, 128, 70), QColor(128, 128, 128, 170)
-        elif self.isChecked():
-            bg, border, fg = QColor(col), QColor(col), QColor(self._on_text)
+            bg, border, fg = qc("raised"), qc("border"), qc("faint")
+        elif self.isChecked():       # actif : teinte douce de la couleur, comme les boutons de la partition
+            bg, border, fg = QColor(col), QColor(col), accent_fg(col)
+            bg.setAlpha(hover and 78 or 56); border.setAlpha(115)
         else:
-            bg = QColor(col); bg.setAlpha(70 if hover else 38)
-            border = QColor(col); border.setAlpha(190)
-            fg = theme_fg
+            bg, border, fg = qc("hover" if hover else "raised"), qc("border"), theme_fg
         if enabled and self._flash > 0.0 and not self.isChecked():
-            bg = QColor(col); bg.setAlpha(int(38 + 190 * self._flash))
-            fg = self._on_text if self._flash > 0.55 else theme_fg
+            bg = QColor(col); bg.setAlpha(int(40 + 130 * self._flash))
+            border = QColor(col); border.setAlpha(115)
         if self.isDown() and enabled:
-            bg = QColor(bg); bg.setAlpha(min(255, bg.alpha() + 40))
+            bg = bg.darker(112)
 
-        pen = QPen(border); pen.setWidthF(1.4)
+        pen = QPen(border); pen.setWidthF(1.0)
         p.setPen(pen)
         p.setBrush(bg)
-        p.drawRoundedRect(rect, radius, radius)
+        p.drawRoundedRect(rect, min(radius, 10), min(radius, 10))
 
         icon_w = {"metronome": 18.0, "countin": 4 * 8.0 + 2}.get(self._kind, 0.0)
         if self._kind == "countin":
@@ -373,7 +434,7 @@ class PillButton(QPushButton):
 class ChoiceButton(QPushButton):
     """Choix exclusif en pastille rectangulaire (ex : une signature rythmique) : plein quand choisi."""
 
-    def __init__(self, text: str, color: str, on_text: str = "#1b1b1b", parent=None):
+    def __init__(self, text: str, color: str, on_text: str = ON_SOFT, parent=None):
         super().__init__(text, parent)
         self.setCheckable(True)
         self.setCursor(Qt.PointingHandCursor)
@@ -387,13 +448,15 @@ class ChoiceButton(QPushButton):
         color, on_text = self._color, self._on_text
         c = QColor(color)
         rgba = lambda a: f"rgba({c.red()},{c.green()},{c.blue()},{a})"
-        fg = "#e8e8e8" if isDarkTheme() else "#202020"
+        p = pal()
+        checked_fg = accent_fg(c).name()
         self.setStyleSheet(
-            f"QPushButton {{ background: rgba(128,128,128,0.12); border: 1px solid rgba(128,128,128,0.35);"
-            f" border-radius: 9px; color: {fg}; font-weight: 600; padding: 2px 6px; }}"
-            f"QPushButton:hover {{ background: {rgba(0.20)}; border-color: {rgba(0.8)}; }}"
-            f"QPushButton:checked {{ background: {color}; border: 1px solid {color}; color: {on_text}; }}"
-            f"QPushButton:disabled {{ color: rgba(128,128,128,0.7); background: rgba(128,128,128,0.08); }}")
+            f"QPushButton {{ background: {p['raised']}; border: 1px solid {p['border']};"
+            f" border-radius: 8px; color: {p['text']}; font-weight: 600; padding: 2px 6px; }}"
+            f"QPushButton:hover {{ background: {p['hover']}; }}"
+            f"QPushButton:checked {{ background: {rgba(0.22)}; border: 1px solid {rgba(0.45)}; color: {checked_fg}; }}"
+            f"QPushButton:checked:hover {{ background: {rgba(0.3)}; }}"
+            f"QPushButton:disabled {{ color: {p['faint']}; background: {p['raised']}; }}")
 
 
 class TrackRow(QWidget):

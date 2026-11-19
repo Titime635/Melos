@@ -27,11 +27,12 @@ from midi.sender import MidiSender
 from state.amp_state import AmpState
 from ui.drum_icons import draw_category_icon, draw_star
 from ui.module_card import MODULE_COLORS, ModuleCard
+from ui.theme import ON_SOFT, style_popup
 from ui.popup_utils import show_popup_under
 from ui.power_pill import PowerPill, text_color
 from ui.widgets import NoWheelSlider
 
-STAR_COLOR = QColor("#FFC107")
+STAR_COLOR = QColor("#d9b45a")
 TILE_H = 58
 ROW_H = 30
 GAP = 10
@@ -107,7 +108,7 @@ class StyleTile(QAbstractButton):
         p.setPen(Qt.NoPen); p.setBrush(color)
         p.drawEllipse(badge)
         dark = (color.lightness() > 150)
-        draw_category_icon(p, cat.key, badge.adjusted(9, 9, -9, -9), QColor("#1b1b1b") if dark else QColor("white"))
+        draw_category_icon(p, cat.key, badge.adjusted(9, 9, -9, -9), QColor(ON_SOFT))
 
         x = badge.right() + 12
         w = self.width() - x - 44
@@ -207,7 +208,7 @@ class StyleItem(QWidget):
         chip = QRectF(6, (self.height() - 24) / 2, 24, 24)
         p.setPen(Qt.NoPen); p.setBrush(color)
         p.drawEllipse(chip)
-        p.setPen(QColor("#1b1b1b") if color.lightness() > 150 else QColor("white"))
+        p.setPen(QColor(ON_SOFT))
         p.setFont(_font(11 if number < 100 else 9, True))
         p.drawText(chip, Qt.AlignCenter, str(number))
 
@@ -235,8 +236,7 @@ class StylePicker(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent, Qt.Popup)
         self.setObjectName("DrumStylePicker")
-        self.setStyleSheet("#DrumStylePicker { background: palette(window); "
-                           "border: 1px solid rgba(128,128,128,0.45); border-radius: 10px; }")
+        style_popup(self)
         self.setFixedWidth(404)
         self._current = 0
         self._favorites: list[int] = []
@@ -249,7 +249,7 @@ class StylePicker(QFrame):
         grid = QGridLayout()
         grid.setSpacing(4)
         self._chips: dict[str, CategoryChip] = {}
-        chips = [("FAV", "Favoris", "#FFC107")] + [(c.key, c.short, c.color) for c in CATEGORIES]
+        chips = [("FAV", "Favoris", "#d9b45a")] + [(c.key, c.short, c.color) for c in CATEGORIES]
         for i, (key, label, color) in enumerate(chips):
             chip = CategoryChip(key, label, color)
             chip.clicked.connect(lambda _c=False, k=key: self._select_tab(k))
@@ -356,7 +356,7 @@ class DrumPanel(ModuleCard):
         self._level_slider.setRange(0, 100)
         self._level_slider.valueChanged.connect(lambda v: self._level_label.setText(f"{v}%"))
         self._level_slider.valueChanged.connect(self._on_level_changed)
-        lv.addWidget(self._slider_row("Volume", self._level_slider, self._level_label, strong=True))
+        lv.addWidget(self._slider_row("Volume", self._level_slider, self._level_label))
         layout.addWidget(self._level_w)
 
         # EQ

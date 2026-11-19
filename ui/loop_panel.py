@@ -33,6 +33,7 @@ from settings import load_settings, update_settings
 from state.transport_state import TransportState
 from ui import looper_widgets as lw
 from ui.module_card import MODULE_COLORS, ModuleCard
+from ui.theme import style_popup
 from ui.popup_utils import show_popup_under
 from ui.widgets import NoWheelSpinBox, NoWheelSlider
 
@@ -223,9 +224,7 @@ class LoopPanel(ModuleCard):
         dans la page Réglages."""
         popup = QFrame(self, Qt.Popup)
         popup.setObjectName("LoopSettingsPopup")
-        popup.setStyleSheet(
-            "#LoopSettingsPopup { background: palette(window); border: 1px solid rgba(128,128,128,0.45);"
-            " border-radius: 8px; }")
+        style_popup(popup)
         v = QVBoxLayout(popup)
         v.setContentsMargins(16, 12, 16, 14)
         v.setSpacing(8)
@@ -557,6 +556,9 @@ class LoopPanel(ModuleCard):
         self._play_btn.setEnabled(state in ("stopped", "playing"))
 
         self._clear_btn.setEnabled(state in ("playing", "overdubbing", "stopped"))
+        self._record_btn.set_current(state == "recording")
+        self._overdub_btn.set_current(state == "overdubbing")
+        self._play_btn.set_current(state == "playing")
 
     def _on_length_changed(self, seconds: float):
         self._loop_seconds = seconds

@@ -10,7 +10,7 @@ mais branchées sur les mêmes AmpState/MidiSender, donc toujours synchronisées
 
 import logging
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QScrollArea
 from qfluentwidgets import qconfig, FluentWindow, FluentIcon, InfoBar, InfoBarPosition, NavigationItemPosition
@@ -32,7 +32,7 @@ from ui.settings_interface import SettingsInterface
 from ui.tab_interface import TabInterface
 from ui.editor_interface import EditorInterface
 from ui.shortcuts_interface import ShortcutsInterface
-from ui.theme import apply_theme
+from ui.theme import INSTRUMENT_COLORS, MODULE_COLORS, apply_theme, page_icon as _page_icon, window_background
 from settings import load_settings
 from shortcuts.manager import ShortcutManager, MODE_OFF, MODE_WINDOW, MODE_GLOBAL, typing_in_app
 from state.undo import SettingsHistory, ShortcutsHistory, UndoStack
@@ -111,6 +111,7 @@ class HomeInterface(QScrollArea):
 class MainWindow(FluentWindow):
     def __init__(self, state: AmpState, sender: MidiSender, shortcuts: ShortcutManager, monitor=None, editor=None):
         super().__init__()
+        self.setCustomBackgroundColor(*window_background())      # même fond de page que l'onglet Partition
         # Pas d'effet Mica : une fois la vue web (onglet Partition) affichée, Qt compose la fenêtre avec le GPU et les
         # zones « transparentes » du Mica (barre latérale des onglets) deviennent noires en thème clair. Fond uni à la place.
         self.setMicaEffectEnabled(False)
@@ -137,21 +138,21 @@ class MainWindow(FluentWindow):
 
         # Ajouté en premier : c'est la vue par défaut à l'ouverture
         self.dashboard_interface = DashboardInterface(state, sender, self._loop_engine, self._audio, names=self.names)
-        self.addSubInterface(self.dashboard_interface, FluentIcon.LAYOUT, "Dashboard")
+        self.addSubInterface(self.dashboard_interface, _page_icon(FluentIcon.LAYOUT, MODULE_COLORS["setlist"]), "Dashboard")
 
         self.home_interface = HomeInterface(state, sender, self._loop_engine, self._audio, names=self.names)
-        self.addSubInterface(self.home_interface, FluentIcon.VIEW, "Classique")
+        self.addSubInterface(self.home_interface, _page_icon(FluentIcon.VIEW, MODULE_COLORS["tuner"]), "Classique")
 
         self.tab_interface = TabInterface()
         self.tab_interface.set_amp(state, sender, self.names)   # changements de preset posés sur la partition
-        self.addSubInterface(self.tab_interface, FluentIcon.MUSIC, "Partition")
+        self.addSubInterface(self.tab_interface, _page_icon(FluentIcon.MUSIC, INSTRUMENT_COLORS["guitar"]), "Partition")
 
         # Éditeur de presets du Mighty + bibliothèque (cf editor/ et ui/editor_interface.py)
         self._editor_service = editor[0] if editor else None
         self.editor_interface = None
         if editor:
             self.editor_interface = EditorInterface(editor[0], editor[1], state, names=self.names)
-            self.addSubInterface(self.editor_interface, FluentIcon.EDIT, "Éditeur")
+            self.addSubInterface(self.editor_interface, _page_icon(FluentIcon.EDIT, MODULE_COLORS["loop"]), "Éditeur")
 
         # --- Annuler / rétablir : une pile par page (cf state/undo.py) ---
         self._play_stack = UndoStack(self._apply_play_entry, parent=self)   # Dashboard + Classique
@@ -232,6 +233,7 @@ class MainWindow(FluentWindow):
     def _apply_replaced_settings(self):
         cfg = load_settings()
         apply_theme(cfg["ui"]["theme"])
+        self.setCustomBackgroundColor(*window_background())
         self._audio.reload_from_settings()
         if self._monitor is not None:
             self._monitor.apply_preferences()
@@ -372,9 +374,30 @@ class MainWindow(FluentWindow):
         else:
             self._was_maximized = self.isMaximized()
             self.showFullScreen()
+        self._sync_titlebar()
+        for ms in (60, 300):                                 # Windows termine le changement d'état après coup
+            QTimer.singleShot(ms, self._sync_titlebar)
+
+    def _sync_titlebar(self):
+        """Barre de titre (et ses boutons réduire / agrandir / fermer) cachée en plein écran, remise en place au retour."""
         bar = getattr(self, "titleBar", None)
-        if bar is not None:
-            bar.setVisible(not self.isFullScreen())
+        if bar is None:
+            return
+        full = self.isFullScreen()
+        bar.setVisible(not full)
+        if not full:
+            bar.move(46, 0)
+            bar.resize(self.width() - 46, bar.height())
+            for name in ("minBtn", "maxBtn", "closeBtn"):
+                btn = getattr(bar, name, None)
+                if btn is not None:
+                    btn.show()
+            bar.raise_()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange:         # aussi quand on sort du plein écran autrement que par F11
+            QTimer.singleShot(0, self._sync_titlebar)
 
     # --- Fenêtre maximisée qui déborde sur la barre des tâches ---
     # Si le contenu a un instant dépassé la taille de l'écran (ex. liste de vidéos aux titres longs), Windows garde la

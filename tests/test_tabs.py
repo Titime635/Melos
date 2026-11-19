@@ -148,3 +148,22 @@ assert _bbs(_half, 8, _exp) == [i * 3000.0 for i in range(8)]
 assert _stride([i * 3.0 for i in range(8)], 8, _exp) == 1                     # normal : inchangé
 assert _stride([i * 3.0 for i in range(16)], 8, _exp) == 1                    # 2x plus de points mais durées cohérentes (reprises) : inchangé
 print("synchro demi-mesure OK")
+
+# --- reprises : un point Songsterr par mesure JOUÉE, rattaché au bon passage ---
+from tabs.model import Measure as _M
+from tabs.sync import align_played, played_sequence, to_syncs as _ts, sync_lines as _sl
+_ms = lambda n: [_M(i) for i in range(n)]
+_m = _ms(8); _m[2].repeat_start = True; _m[4].repeat_end = 2
+assert played_sequence(_m) == [0, 1, 2, 3, 4, 2, 3, 4, 5, 6, 7]
+_m = _ms(6); _m[0].repeat_start = True; _m[2].repeat_end = 2; _m[2].alt_ending = [1]; _m[3].alt_ending = [2]
+assert played_sequence(_m) == [0, 1, 2, 0, 1, 3, 4, 5]
+_m = _ms(8); _m[2].repeat_start = True; _m[4].repeat_end = 2
+_seq = played_sequence(_m); _pts = [float(i) for i in range(len(_seq))]
+_st, _flat = align_played(_pts, _seq, 8)
+assert _st[2] == 2000 and _st[5] == 8000 and _flat[5] == (2, 1, 5000.0)
+assert _sl(_flat)[5] == "\\sync (2 1 5000)"
+_sy = _ts([{"status": "done", "videoId": "v", "points": _pts, "feature": "alternative"}], 8, None, _seq)
+assert _sy[0].flat_points and len(_sy[0].alpha_sync) == 11
+_sy = _ts([{"status": "done", "videoId": "v", "points": _pts[:8], "feature": "alternative"}], 8, None, _seq)
+assert _sy[0].flat_points is None
+print("reprises OK")

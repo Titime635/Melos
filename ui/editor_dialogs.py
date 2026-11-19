@@ -17,9 +17,10 @@ from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon, IconWidget, Line
 from editor.catalog import get_catalog
 from editor.diff import diff_presets
 from editor.preset import Preset
-from ui.editor_widgets import (EFFECT_COLOR, EFFECT_NAME, GREEN, GREY, ORANGE, RADIUS, TILE_FILL, ElidedLabel,
+from ui.editor_widgets import (EFFECT_COLOR, EFFECT_NAME, GREEN, GREY, ORANGE, RADIUS, TILE_FILL, TILE_OFF, ElidedLabel,
                                GlyphWidget, draw_glyph, fluent_tip, paint_icon, small_font, surface, text_color,
                                with_alpha)
+from ui.theme import pal
 
 
 def nice_date(iso: str) -> str:
@@ -73,7 +74,7 @@ class MiniChain(QWidget):
             on = self.preset.enabled(fid)
             c = QColor(EFFECT_COLOR[fid])
             p.setPen(QPen(c if on else QColor(95, 95, 100), 1.8))
-            p.setBrush(TILE_FILL if on else QColor(46, 46, 50))
+            p.setBrush(TILE_FILL if on else TILE_OFF)
             p.drawRoundedRect(r, 6, 6)
             draw_glyph(p, fid, r.adjusted(5, 5, -5, -5), c if on else QColor(125, 125, 130), 1.6)
             if fid in self.highlight:
@@ -131,7 +132,7 @@ class NoteRow(QWidget):
         lay.addWidget(self.badge, 0, Qt.AlignTop)
         self.label = QLabel(text)
         self.label.setWordWrap(True)
-        self.label.setStyleSheet(f"color: {'rgba(255,255,255,200)' if _dark() else 'rgba(0,0,0,200)'}; background: transparent;")
+        self.label.setStyleSheet(f"color: {pal()['text']}; background: transparent;")
         lay.addWidget(self.label, 1)
 
 
@@ -290,7 +291,7 @@ class ChangeRow(QWidget):
         name = EFFECT_NAME.get(fid, "") if fid is not None else ""
         self.label = ElidedLabel(f"{name} · {label}" if name else label, bold=True)
         lay.addWidget(self.label, 1)
-        dim = "rgba(255,255,255,140)" if _dark() else "rgba(0,0,0,140)"
+        dim = pal()["muted"]
         self.old = QLabel(old)
         self.old.setStyleSheet(f"color: {dim}; background: transparent;")
         self.new = QLabel(new)

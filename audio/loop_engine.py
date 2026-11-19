@@ -29,6 +29,7 @@ callback ET depuis les méthodes appelées côté UI ; la connexion doit être e
 Qt.QueuedConnection côté UI pour rester thread-safe (cf ui/loop_panel.py).
 """
 
+import logging
 import math
 import threading
 
@@ -37,6 +38,8 @@ import sounddevice as sd
 from PySide6.QtCore import QObject, Signal
 
 from . import portaudio_utils as pa
+
+log = logging.getLogger("melos.audio")
 
 SAMPLE_RATE = 44100
 CHANNELS = 2
@@ -143,36 +146,81 @@ class LoopEngine(QObject):
         automatique : le flux est à 44,1 kHz, la carte peut tourner à 48 kHz). `exclusive` : mode exclusif WASAPI."""
         self.stop_stream(wait=1.0)  # laisse l'ancien flux se fermer, mais sans jamais bloquer longtemps
         self.stream_info = {}
-        attempts = [(low_latency, wasapi)]
+        # Chaîne de tentatives, de la plus fidèle à la plus tolérante. Chacune est journalisée : un échec
+        # « Invalid sample rate » (PaErrorCode -9997) venait d'un pilote qui refuse 44,1 kHz (mode exclusif,
+        # carte en 48 kHz sans conversion automatique, interface en cours de réveil…).
+        devices = (input_device, output_device)
+        attempts = [("réglages", devices, low_latency, wasapi, exclusive)]
         if low_latency:
-            attempts.append((False, wasapi))   # repli : certains pilotes refusent la latence « low »
-        last_error = ""
-        for low, use_wasapi in attempts:
+            attempts.append(("sans latence « low »", devices, False, wasapi, exclusive))   # certains pilotes la refusent
+        if wasapi and exclusive:
+            attempts.append(("WASAPI partagé (conversion automatique)", devices, False, True, False))
+        if wasapi:
+            attempts.append(("sans WASAPI spécifique", devices, False, False, False))
+        default = self._default_devices(output_device if output_device is not None else input_device)
+        if default is not None and default != devices:
+            attempts.append(("périphériques par défaut de l'API", default, False, wasapi, False))
+        errors: list[str] = []
+        for label, devs, low, use_wasapi, excl in attempts:
             stream = None
             try:
-                extra = None
-                if use_wasapi:
-                    extra = sd.WasapiSettings(exclusive=exclusive, auto_convert=not exclusive)
                 kwargs = dict(samplerate=SAMPLE_RATE, channels=CHANNELS, blocksize=blocksize, dtype="float32",
-                              device=(input_device, output_device), callback=self._callback,
-                              latency="low" if low else None)
-                if extra is not None:
-                    kwargs["extra_settings"] = extra
+                              device=devs, callback=self._callback, latency="low" if low else None)
+                if use_wasapi:
+                    kwargs["extra_settings"] = sd.WasapiSettings(exclusive=excl, auto_convert=not excl)
                 stream = sd.Stream(**kwargs)
                 self._running = True
                 stream.start()
                 self._stream = stream
                 pa.stream_opened()
                 self.stream_info = self._read_stream_info(stream, low)
+                if label != "réglages":
+                    self.stream_info["fallback"] = label
+                    log.warning("flux audio ouvert avec le repli « %s » (les réglages demandés ont échoué : %s)",
+                                label, errors[0] if errors else "?")
                 return True
             except Exception as exc:
-                last_error = str(exc)
+                msg = str(exc)
+                errors.append(msg)
+                log.warning("ouverture du flux audio (%s) refusée : %s | entrée=%s sortie=%s | %s",
+                            label, msg, self._describe(devs[0]), self._describe(devs[1]), exc.__class__.__name__)
                 self._running = False
                 self._stream = None
                 if stream is not None:
                     pa.close_stream_async(stream)
-        self.stream_error.emit(last_error)
+        self.stream_error.emit(self._explain(errors[0] if errors else "", devices))
         return False
+
+    @staticmethod
+    def _describe(index) -> str:
+        """« nom @ 48000 Hz » du périphérique (diagnostic)."""
+        try:
+            d = sd.query_devices(index) if index is not None else sd.query_devices(kind=None)
+            return f"{d['name']} @ {int(d['default_samplerate'])} Hz"
+        except Exception:
+            return str(index)
+
+    @staticmethod
+    def _default_devices(reference):
+        """(entrée, sortie) par défaut de l'API audio du périphérique `reference`, ou None."""
+        try:
+            h = sd.query_devices(reference)["hostapi"] if reference is not None else sd.default.hostapi
+            api = sd.query_hostapis(h)
+            i, o = api["default_input_device"], api["default_output_device"]
+            return (i, o) if i >= 0 and o >= 0 else None
+        except Exception:
+            return None
+
+    def _explain(self, raw: str, devices) -> str:
+        """Message lisible pour la carte Loop station."""
+        low = raw.lower()
+        if "sample rate" in low or "9997" in raw:
+            return (f"la carte refuse {SAMPLE_RATE // 1000},{(SAMPLE_RATE % 1000) // 100} kHz "
+                    f"({self._describe(devices[1])}). Réglages > Audio : choisis WASAPI sans mode exclusif, "
+                    "ou une autre interface")
+        if "unavailable" in low or "-9985" in raw or "busy" in low:
+            return "interface audio occupée par une autre application"
+        return raw or "ouverture du flux impossible"
 
     @staticmethod
     def _read_stream_info(stream, low: bool) -> dict:

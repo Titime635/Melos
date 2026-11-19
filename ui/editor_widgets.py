@@ -14,20 +14,21 @@ from PySide6.QtCore import QMimeData, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QIntValidator, QPainter, QPen
 from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QStackedLayout, QVBoxLayout,
                                QWidget)
-from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, LineEdit, MessageBoxBase, SegmentedWidget,
+from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, LineEdit, MessageBoxBase,
                             SubtitleLabel, TextEdit, ToolTipFilter, ToolTipPosition, isDarkTheme, qconfig, themeColor)
 
+from ui.tab_widgets import SegmentedPill
+from ui.theme import DARK, EFFECT_COLORS, STATE_COLORS, pal, qc
 from ui.widgets import NoWheelComboBox, NoWheelSlider
 
-GREEN, ORANGE, GREY, RED = "#3FB950", "#E98D32", "#8A8A8A", "#E5534B"
+GREEN, ORANGE, GREY, RED = STATE_COLORS["ok"], STATE_COLORS["warn"], STATE_COLORS["neutral"], STATE_COLORS["error"]
 RADIUS = 8
 MIME_BLOCK = "application/x-melos-fx"
 
 # Noms et couleurs des blocs, repris de MightyEditor (identifiant 1..9 du Mighty ; le catalogue garde CMP, NG, CAB)
 from editor.diff import BLOCK_NAMES as EFFECT_NAME  # noqa: E402
-EFFECT_COLOR = {1: "#F2E34C", 2: "#F2762E", 3: "#E3342F", 4: "#E8E8E8", 5: "#A4C639",
-                6: "#2E5BE0", 7: "#7DD3CF", 8: "#A66DD8", 9: "#3B9FD6"}
-TAG_COLORS = ["#4C8DF6", "#3FB950", "#E98D32", "#B05FE0", "#2BB3C0", "#E5534B", "#C79A4B", "#DF74D6"]
+EFFECT_COLOR = EFFECT_COLORS                  # couleurs de la barre d'effets du Mighty (ui/theme.py)
+TAG_COLORS = ["#4a8cf5", "#2fc97c", "#f5a524", "#a66cf0", "#22b8d4", "#ef4b55", "#c9b82a", "#ec6f9c"]
 
 
 def tag_color(tag: str) -> QColor:
@@ -61,28 +62,21 @@ def with_alpha(color, alpha: int) -> QColor:
 
 
 def text_color(level: str = "primary") -> QColor:
-    base = QColor(255, 255, 255) if isDarkTheme() else QColor(0, 0, 0)
-    base.setAlpha({"primary": 235, "secondary": 160, "dim": 105}[level])
-    return base
+    return qc({"primary": "text", "secondary": "muted", "dim": "faint"}[level])
 
 
 def surface(selected=False, hover=False, accent=None, dim=False):
     """(fond, bordure) communs à toutes les cartes de la page."""
-    dark = isDarkTheme()
-    if dark:
-        fill = QColor(255, 255, 255, 24 if hover else 12)
-        border = QColor(255, 255, 255, 34)
-    else:
-        fill = QColor(255, 255, 255, 255 if hover else 220)
-        border = QColor(0, 0, 0, 32)
+    fill = qc("hover" if hover else "raised")             # posé sur une carte « surface » : niveau « relief » de la palette
+    border = qc("border")
     if accent is not None:
         c = QColor(accent)
         fill = QColor(c.red(), c.green(), c.blue(), (60 if hover else 44) if selected else (34 if hover else 22))
         border = with_alpha(c, 230 if selected else 120)
     elif selected:
-        c = themeColor()
-        fill = QColor(c.red(), c.green(), c.blue(), 40)
-        border = c
+        c = qc("accent")
+        fill = QColor(c.red(), c.green(), c.blue(), 46)
+        border = with_alpha(c, 130)
     if dim:
         fill.setAlpha(fill.alpha() // 2)
     return fill, border
@@ -169,8 +163,7 @@ class ElidedLabel(QLabel):
         self.setText(text)
 
     def _apply_color(self):
-        a = 150 if self._dim else 235
-        self.setStyleSheet(f"color: {f'rgba(255,255,255,{a})' if isDarkTheme() else f'rgba(0,0,0,{a})'}; background: transparent;")
+        self.setStyleSheet(f"color: {pal()['muted' if self._dim else 'text']}; background: transparent;")
 
     def setText(self, text):
         self._full = text
@@ -309,7 +302,8 @@ def draw_glyph(p: QPainter, fid: int, r: QRectF, color, width=2.0):
     p.restore()
 
 
-TILE_FILL = QColor(34, 36, 42)
+TILE_FILL = QColor(DARK["surface"])      # pastille sombre des pictogrammes d'effets (identique dans les deux thèmes)
+TILE_OFF = QColor(DARK["raised"])
 
 
 class GlyphWidget(QWidget):
@@ -337,7 +331,7 @@ class GlyphWidget(QWidget):
 
 
 # --------------------------------------------------------------------------------------------- états
-RED_STATE = "#E5534B"
+RED_STATE = STATE_COLORS["error"]
 STATE_INFO = {                  # clé -> (libellé, couleur, icône) ; la couleur de « sel » suit le thème
     "sel": ("Preset édité", None, FluentIcon.EDIT),
     "play": ("Joué par l'ampli", GREEN, FluentIcon.PLAY_SOLID),
@@ -620,7 +614,7 @@ class BlockChip(_Card):
                 p.setBrush(Qt.NoBrush)
                 p.drawRoundedRect(t.adjusted(-k / 2 + 1, -k / 2 + 1, k / 2 - 1, k / 2 - 1), 11, 11)
         # tuile
-        fill = QColor(TILE_FILL) if on else QColor(46, 46, 50)
+        fill = QColor(TILE_FILL) if on else QColor(TILE_OFF)
         if self._hover and not self._dragging:
             fill = fill.lighter(125)
         if self._dragging:
@@ -636,7 +630,7 @@ class BlockChip(_Card):
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(20, 20, 22))
             p.drawEllipse(b)
-            paint_icon(p, FluentIcon.POWER_BUTTON, b.adjusted(3, 3, -3, -3), QColor("#E5534B"))
+            paint_icon(p, FluentIcon.POWER_BUTTON, b.adjusted(3, 3, -3, -3), QColor(STATE_COLORS["error"]))
         # nom
         nf = small_font(self.font(), -0.5, True)
         fm = QFontMetrics(nf)
@@ -706,8 +700,8 @@ class EditableValue(QWidget):
         self.edit.setValidator(QIntValidator(lo, hi))
         self.edit.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.edit.setFont(f)
-        self.edit.setStyleSheet(f"QLineEdit {{ color: {accent}; background: rgba(128,128,128,40); "
-                                f"border: 1px solid {accent}; border-radius: 4px; padding: 0 3px; }}")
+        self.edit.setStyleSheet(f"QLineEdit {{ color: {accent}; background: {pal()['raised']}; "
+                                f"border: 1px solid {accent}; border-radius: 6px; padding: 0 3px; }}")
         self.edit.editingFinished.connect(self._commit)
         self.edit.cancelled.connect(self._cancel)
         lay.addWidget(self.label)
@@ -789,7 +783,7 @@ class ParamRow(QWidget):
     def _choice_widget(self):
         names = [c[1] for c in self.pdef.choices]
         if len(names) <= 3:
-            self.segment = SegmentedWidget()
+            self.segment = SegmentedPill()
             for val, name in self.pdef.choices:
                 self.segment.addItem(routeKey=str(val), text=name, onClick=lambda _=False, v=val: self.changed.emit(v))
             return self.segment

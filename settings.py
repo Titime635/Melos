@@ -63,6 +63,7 @@ _DEFAULTS: dict[str, Any] = {
     },
     "ui": {
         "theme": "auto",      # "auto" (celui de Windows) | "light" | "dark"
+        "contrast": False,    # variante « Contraste » du thème sombre (fond presque noir, accents plus vifs)
     },
     # Page Partition (tablature Songsterr + vidéo YouTube)
     "tabs": {

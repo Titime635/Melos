@@ -106,8 +106,9 @@ dash = win.dashboard_interface
 goto(dash)
 dash.save_layout(); win._play_stack._undo.clear(); win._play_stack._redo.clear(); pump(0.1)
 dash._dock_area._on_delete_requested(dash._dock_area._docks["setlist"]); dash.save_layout()
+pump(0.3); dash.save_layout()                     # le réagencement qui suit la suppression se fusionne avec elle (< 0,8 s)
 assert win._play_stack.can_undo() and "setlist" in dash._dock_area.hidden_modules
-goto(win.home_interface)
+goto(win.home_interface); dash.save_layout()
 win.undo_redo(False)                                    # sur Classique : ne touche pas à l'agencement
 assert "setlist" in dash._dock_area.hidden_modules
 goto(dash)

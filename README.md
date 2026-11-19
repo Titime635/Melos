@@ -1,42 +1,56 @@
-# Mighty Control
+# Melos
 
-Python-based performance software for the NUX Mighty Plug Pro, turning the amp into a complete stage and studio ecosystem. It features a synchronized looper, automatic preset changes, and an integrated workflow designed for live performance and music creation.
+Logiciel en Python pour le **NUX Mighty Plug Pro**, qui transforme l'ampli en un écosystème de scène et de studio : loop station synchronisée, changements de preset automatiques, partitions interactives, éditeur de presets, le tout dans un seul poste de travail pensé pour jouer en live et créer.
 
-## Status
+## Fonctionnalités
 
-**V1 and V2 complete, V3 in progress.** The **Partition** tab (Songsterr tabs synced with the original recording or played by a MIDI synthesizer) works; next up are preset-change markers on the score, then the Mighty Editor. A few device-side details (tuner reference byte, drum tempo SysEx) are still being validated on real hardware.
+- **Dashboard** : agencement libre par docks (glisser, redimensionner, retirer et remettre des modules), mode Édition / Performance séparé, modules adaptatifs qui réduisent leur contenu selon la place disponible, agencement sauvegardé automatiquement. L'onglet **Classique** conserve l'ancienne vue empilée.
+- **Presets** : 7 presets colorés, changement en un clic, noms personnalisés, étiquettes de même taille qui passent en numéros quand la place manque.
+- **Tuner** : un seul module avec jauge en arc et note détectée en grand, aiguille ♭ ← | → ♯ et affichage des cents. Standard / Eb standard / Drop D plus 23 accordages six cordes. Rangée de cordes toujours visible (clic sur une corde pour le mode manuel, aucune sélectionnée = automatique). La note passe au vert, avec un carillon optionnel, une fois accordée. Fréquence de référence, calibration (zéro, échelle, zéro par note) et transposition dans la fenêtre d'engrenage du module.
+- **Batterie d'accompagnement et EQ** : 75 styles répartis en 11 catégories (onglets + favoris, icônes vectorielles), volume, graves / médiums / aigus.
+- **Tempo** : BPM, signature (4/4, 6/8, 12/8, 3/4 ou personnalisée), click, pastilles de temps ; partagé par la loop station et la batterie.
+- **Loop station** : boucles multipistes (base + pistes d'overdub supprimables indépendamment), quantification (Rec / Overdub / Stop attendent la mesure suivante, en suivant la batterie quand elle tourne), longueur automatique (arrêt après N mesures), décompte audio d'une mesure complète (attend la mesure suivante si une mesure est en cours), compensation de latence, volume, nombre de répétitions, limite de passes d'overdub.
+- **Setlist** : séquences nommées par morceau, composées d'étapes de presets (avec label : « Couplet », « Refrain », « Solo »…), modes Play / Edit, vue de l'étape courante et des deux suivantes, navigation circulaire, interrupteur pour suspendre le contrôle de l'ampli sans perdre sa place.
+- **Annuler / rétablir** : Ctrl+Z, Ctrl+Y / Ctrl+Maj+Z, **par page**. Sur le Dashboard, annule les réglages de modules et les changements d'agencement ; sur la page Raccourcis, les changements de raccourcis ; sur la page Partition, les marqueurs et la zone de boucle.
+- **Partition** : recherche d'un morceau par son nom (ou collage d'un lien Songsterr), tablature qui défile en suivant la mesure courante, deux sources sonores, marque-pages, presets placés sur la partition, édition. Voir [Onglet Partition](#onglet-partition).
+- **Éditeur de presets** : voir [Onglet Éditeur](#onglet-éditeur).
+- **Page Réglages** : tout ce qui n'est pas déjà dans les réglages propres à un module :
+  - audio du looper : entrée, sortie, bouton d'actualisation, **API audio** (WASAPI / MME / …), mode exclusif WASAPI, taille du tampon et latence réellement annoncée par PortAudio ;
+  - port MIDI : automatique (trouve le Mighty) ou choix manuel ;
+  - thème : clair, sombre ou « suit Windows » ;
+  - mode des raccourcis, avec un lien vers la page Raccourcis ;
+  - ouverture du dossier des réglages, export / import de tous les réglages, réinitialisation (agencement du Dashboard, noms des presets, ou tout) ;
+  - rapport de diagnostic à copier (versions, ports MIDI, périphériques audio) et fichier journal.
+- **Réglages persistants** : tout survit à un redémarrage et est renvoyé à l'appareil au lancement.
 
-## Features
+## Onglet Éditeur
 
-- **Dashboard** — free-form docking layout (drag, resize, remove and re-add modules), a separate Edit / Performance mode, adaptive modules that shrink their content to the space they get, layout saved automatically. The **Classique** tab keeps the old stacked view.
-- **Presets** — 7 color-coded presets, one-click switching, custom names, same-size labels that fall back to numbers when space runs out
-- **Tuner** — one module: arc gauge with a huge detected note, ♭ ← | → ♯ needle and cents readout; Standard / Eb standard / Drop D plus 23 six-string tunings; a string row that is always visible (click a string for manual mode, none selected = auto); the note turns green with an optional chime once tuned; reference pitch, calibration (zero, scale, per-note zero) and note shift in the module's gear popup
-- **Drum accompaniment & EQ** — 75 styles in 11 categories (tabs + favorites, custom vector icons), volume, bass/mid/treble
-- **Tempo** — BPM, time signature (4/4, 6/8, 12/8, 3/4 or custom), click, beat dots; shared by the looper and the drums
-- **Loop station** — multi-track looping (base + independently deletable overdub tracks), quantization (Rec / Overdub / Stop wait for the next bar, following the drums when they run), auto-length (stop after N bars), audio count-in of one full bar (waits for the next bar when a bar is in progress), latency compensation, volume, repeat count, overdub pass limit
-- **Setlist** — named per-song sequences of preset steps, Play / Edit modes, a view of the current step plus the next two, loop-around navigation, an enable/disable toggle to pause device control without losing your place
-- **Undo / redo** — Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, per page: on the Dashboard they revert module settings and layout changes, on the Raccourcis page they revert shortcut changes
-- **Réglages (Settings) page** — what is not already in a module's own settings:
-  - looper audio: input, output, refresh button, **audio API** (WASAPI / MME / ...), WASAPI exclusive mode, buffer size, and the latency PortAudio actually reports
-  - MIDI port: automatic (finds the Mighty) or manual choice
-  - theme: light, dark or follow Windows
-  - shortcut mode with a link to the Raccourcis page
-  - open the settings folder, export / import all settings, reset (Dashboard layout, preset names, or everything)
-  - diagnostic report to copy (versions, MIDI ports, audio devices) and the log file
-- **Partition (sheet music)** — search a song by name (or paste a Songsterr link) and get its tablature, scrolling and highlighting the current bar in sync with the music; see [Partition tab](#partition-tab) below
-- **Persistent settings** — everything survives a restart and is pushed back to the device on launch
+Remplace MightyEditor (l'application `.exe` d'origine) par un éditeur intégré. Le principe : on **édite les presets de la bibliothèque** (la source de travail sur le PC), puis on décide où et quand les envoyer sur le Mighty.
 
-## Stack
+- **Bibliothèque de presets** (à gauche) : presets nommés, étiquettes libres, recherche, filtre « Sur le Mighty / Hors Mighty ». Un fichier JSON par preset, écriture atomique.
+- **7 emplacements du Mighty** : miroir de l'ampli. Un clic fait jouer l'emplacement par l'ampli. Chaque carte dit où en est son contenu par rapport à la bibliothèque : *joué*, *preset édité*, *à jour*, *à renvoyer*, *modifié sur l'ampli*, *hors bibliothèque*, *non lu*.
+- **Chaîne d'effets** : les 9 blocs (COMP, EFX, AMP, EQ, GATE, MOD, DLY, RVB, IR), activables un à un et **réordonnables par glisser-déposer** (ou « Plus tôt / Plus tard »), plus le volume du preset.
+- **Réglages d'un bloc** : choix du modèle et de chaque paramètre, d'après le catalogue complet de l'ampli (`editor/catalog_data.json`).
+- **Écouter** : le preset édité part en direct dans le tampon d'édition de l'ampli, **sans rien écrire en flash** ; l'écoute s'arrête quand l'ampli change de preset.
+- **Envoyer vers…** : écrit le preset dans un emplacement. Une fenêtre « Actuellement → Sera remplacé par » montre les deux chaînes d'effets en miniatures, avec les blocs qui changent soulignés. L'ancien contenu est sauvegardé automatiquement et l'association emplacement ↔ preset est mémorisée.
+- **Historique** : chaque preset garde ses versions (la version d'origine est conservée) ; on peut comparer deux versions (liste des réglages qui changent) et revenir en arrière.
+- **Sauvegardes automatiques** de l'ampli avant tout écrasement : aperçu, restauration, ou import dans la bibliothèque.
+- **Import `.mppropatch`** (fichiers de MightyEditor) en lecture. L'**export** n'est pas encore possible : il demande les réponses impulsionnelles d'usine des baffles, à extraire de MightyEditor.exe.
+- **Détection des modifications hors Melos** : au démarrage, l'ampli est relu et l'empreinte de chaque emplacement est comparée à ce que Melos y avait écrit.
 
-- Python 3.12 (required — `python-rtmidi` has no PyPI wheel beyond 3.12)
-- PySide6 + PySide6-Fluent-Widgets (UI)
+Toute la conversation avec l'ampli passe par **une seule file, dans un thread dédié** : jamais deux échanges simultanés, et l'ordre des actions de l'utilisateur est respecté. Le protocole (SysEx, CC, format des 128 octets d'un preset) est documenté dans [`docs/editor_protocol.md`](docs/editor_protocol.md).
+
+## Pile technique
+
+- Python 3.12 (requis : `python-rtmidi` n'a pas de wheel PyPI au-delà de 3.12)
+- PySide6 + PySide6-Fluent-Widgets (interface)
 - `mido` / `python-rtmidi` (MIDI)
-- `sounddevice` (loop station audio)
-- `keyboard` (global keyboard shortcuts)
-- QtWebEngine (part of PySide6) hosting [alphaTab](https://alphatab.net) for score rendering and MIDI synthesis
-- `python-mpv` + `mpv-2.dll` (libmpv) for the original audio, with `yt-dlp` resolving the stream
+- `sounddevice` + `soundfile` (audio de la loop station)
+- `keyboard` (raccourcis clavier globaux)
+- QtWebEngine (fourni avec PySide6) qui héberge [alphaTab](https://alphatab.net) pour l'affichage de la partition et la synthèse MIDI
+- `python-mpv` + `mpv-2.dll` (libmpv) pour l'audio original, avec `yt-dlp` pour résoudre le flux
 
-## Getting started
+## Démarrage
 
 ```bash
 py -3.12 -m venv .venv
@@ -45,99 +59,134 @@ py -3.12 -m venv .venv
 .venv\Scripts\python.exe main.py
 ```
 
-`tools\setup_deps.py` is the one extra step after a clone or a pull on a new computer: it downloads the large files that are **not in git** (see [Files not in git](#files-not-in-git)). It only fetches what is missing (`--force` re-downloads everything), and `main.py` prints a warning at startup if something is absent.
+`tools\setup_deps.py` est l'étape supplémentaire après un clone ou un pull sur un nouvel ordinateur : il télécharge les gros fichiers qui ne sont **pas dans git** (voir [Fichiers hors git](#fichiers-hors-git)). Il ne récupère que ce qui manque (`--force` retélécharge tout), et `main.py` affiche un avertissement au démarrage si quelque chose est absent.
 
-> On Windows, call `.venv\Scripts\python.exe` directly rather than activating the venv — PowerShell's execution policy blocks the activation script on some machines.
+> Sous Windows, appelle directement `.venv\Scripts\python.exe` plutôt que d'activer le venv : la politique d'exécution de PowerShell bloque le script d'activation sur certaines machines.
 
-Tests are plain Python scripts (no pytest), run headless:
+Les tests sont de simples scripts Python (pas de pytest), lancés sans écran :
 
 ```bash
 set QT_QPA_PLATFORM=offscreen
 .venv\Scripts\python.exe tests\test_audio.py
 ```
 
-## Project structure
+Ils utilisent un faux clavier, un faux audio et un **faux Mighty** qui reproduit ce qui a été mesuré sur le vrai ampli : aucun matériel n'est nécessaire. Ils couvrent l'audio, la connexion, la quantification, les raccourcis, l'annulation, la setlist, le tuner, les onglets Partition et Éditeur (modèle, service et interface) et la bibliothèque de morceaux.
+
+## Structure du projet
 
 ```
 melos/
-├── main.py                  # entry point: wires MIDI/state/UI, pushes restored settings to the device
-├── settings.py              # single JSON settings file (app_settings.json)
-├── paths.py                 # data and log file locations
-├── diagnostics.py           # diagnostic report (Settings page)
-├── docs/protocol_notes.md   # empirically verified MIDI/SysEx protocol
-├── midi/                    # protocol constants, listener (QThread), sender, connection monitor, state sync, drum styles, tunings
-├── state/                   # AmpState (single source of truth), transport (tempo/quantize), tuner session, undo stacks
-├── audio/                   # loop engine (sounddevice callback), audio device/API/buffer config, PortAudio helpers
-├── setlist/                 # sequences and playback/navigation
-├── tabs/                    # Partition tab back end (see below): Songsterr client + parser, alphaTex export, lyrics,
-│   │                        #   video sync, stem mixer, mpv player (own process), local web server
-│   ├── web/tab_view.html    # the score page (alphaTab): layout, cursor, MIDI synthesizer, mixer, JS<->Python bridge
-│   └── vendor/              # downloaded, not in git: alphaTab, Bravura font, soundfonts (.sf2)
-├── shortcuts/               # keyboard shortcuts: action catalogue, key manager, action router
-├── ui/                      # Fluent-widgets modules, Dashboard, Settings, Raccourcis and Partition pages
-├── tools/                   # setup_deps.py and the fetch_*.py download scripts, codec/mpv checks, Songsterr probe
-└── tests/                   # headless test scripts (fake audio/MIDI)
+├── main.py                  # point d'entrée : relie MIDI / état / UI, renvoie les réglages restaurés à l'appareil
+├── settings.py              # fichier de réglages JSON unique (app_settings.json)
+├── paths.py                 # emplacements des fichiers de données et de journal
+├── diagnostics.py           # rapport de diagnostic (page Réglages)
+├── docs/
+│   ├── protocol_notes.md    # protocole MIDI/SysEx vérifié empiriquement (contrôle, tuner, batterie)
+│   └── editor_protocol.md   # protocole de l'éditeur de presets (lecture/écriture des emplacements)
+├── midi/                    # constantes du protocole, listener (QThread), sender, moniteur de connexion,
+│                            #   synchronisation d'état, styles de batterie, accordages
+├── state/                   # AmpState (source de vérité unique), transport (tempo/quantification), session tuner, piles d'annulation
+├── audio/                   # moteur de loop (callback sounddevice), config périphérique/API/tampon, utilitaires PortAudio
+├── setlist/                 # séquences et lecture/navigation
+├── editor/                  # éditeur de presets (sans dépendance Qt sauf service.py) :
+│   │                        #   catalogue des effets, modèle d'un preset (128 octets), bibliothèque, établi,
+│   │                        #   banque (miroir des 7 emplacements), liens emplacement ↔ preset, diff, fichiers .mppropatch,
+│   │                        #   messages MIDI (wire), dialogue bloquant avec l'ampli (amp_io), service Qt à thread dédié
+│   └── catalog_data.json    # modèles et paramètres de chaque bloc d'effet
+├── tabs/                    # back end de l'onglet Partition : client + analyseur Songsterr, export alphaTex, paroles,
+│   │                        #   synchro vidéo, mixeur de pistes, lecteur mpv (processus séparé), serveur web local,
+│   │                        #   bibliothèque de morceaux, modifications de la partition (« Ma version »), outils d'édition
+│   ├── web/tab_view.html    # la page de partition (alphaTab) : mise en page, curseur, synthé MIDI, mixeur, pont JS <-> Python
+│   └── vendor/              # téléchargé, hors git : alphaTab, police Bravura, soundfonts (.sf2)
+├── shortcuts/               # raccourcis clavier : catalogue d'actions, gestionnaire de touches, routeur d'actions
+├── ui/                      # modules Fluent-widgets, Dashboard (docks), pages Réglages, Raccourcis, Partition et Éditeur,
+│                            #   fenêtres flottantes (Morceaux, Marque-pages, Presets), palette d'édition de partition
+├── tools/                   # setup_deps.py et scripts fetch_*.py, sonde de presets, vérifs codec/mpv, sonde Songsterr
+└── tests/                   # scripts de test sans écran (faux audio / MIDI / clavier / Mighty)
 ```
 
-## Roadmap
+## Feuille de route
 
-- **V1 — Core** ✅ presets, setlist, drums, loop station, persistence
-- **V2 — UX & reliability** ✅ dashboard, keyboard shortcuts, loop/drum quantization and looper auto-length, live connection status, module redesigns, per-page undo/redo, Settings page
-- **V3 — Sheet music & preset editing** *(in progress)*: ✅ Songsterr tab view synced to the original recording, ✅ solo/mute of instruments, ✅ lyrics, ✅ MIDI synthesis of the score with soundfont choice and instrument variants; to do: preset changes linked to positions on the tab, embedded or rebuilt Mighty Editor, waveform-based loop visualizer
-- **V4 — Hardware & pro audio**: Arduino foot controller, raw + re-amped recording, advanced tab editing (loop/speed/transpose/markers/comments, multi-instrument tracks), a dedicated "Music mode" with a song timeline
-- **V5 — AI**: orchestration through JARVIS
+- **V1 — Socle** ✅ presets, setlist, batterie, loop station, persistance
+- **V2 — Ergonomie et fiabilité** ✅ dashboard, raccourcis clavier, quantification looper/batterie et longueur automatique du looper, état de connexion en direct, refonte des modules, annuler/rétablir par page, page Réglages
+- **V3 — Partition et édition des presets** ✅
+  - Tablature Songsterr synchronisée avec l'enregistrement original
+  - Solo / mute des instruments
+  - Paroles
+  - Synthèse MIDI de la partition (choix de soundfont, variantes d'instruments)
+  - Changements de preset placés sur la partition et envoyés à l'ampli quand la lecture atteint la mesure
+  - **Éditeur de presets** reconstruit dans l'appli (V3.5) : bibliothèque, emplacements, chaîne d'effets, écoute, envoi, historique, sauvegardes
+- **V4 — Matériel et audio pro** :
+  - Pédalier Arduino
+  - Enregistrement brut + ré-amplifié (re-amping)
+  - Partitions avancées : déjà en place — boucle, vitesse, marque-pages, édition des notes, durées et tempo (« Ma version »), export MIDI ; reste la transposition, les commentaires sur un passage et la gestion avancée des pistes audio
+  - « Mode musique » dédié, avec la frise temporelle du morceau
+- **V5 — IA** : orchestration via JARVIS, auto-configuration des réglages de l'ampli
 
-## Partition tab
+## Onglet Partition
 
-Personal use: tablatures belong to Songsterr and their authors; they are cached locally (`tabs_cache/`) and never redistributed. Songsterr's endpoints are undocumented and may change (`tools/songsterr_probe.py` re-probes them). No audio is downloaded or stored.
+Usage personnel : les tablatures appartiennent à Songsterr et à leurs auteurs ; elles sont mises en cache en local (`tabs_cache/`) et jamais redistribuées. Les points d'accès de Songsterr ne sont pas documentés et peuvent changer (`tools/songsterr_probe.py` les sonde de nouveau). Aucun audio n'est téléchargé ni stocké.
 
-- **Search** — type a song name in the field (a result list opens under it, mouse or arrows + Enter) or paste a Songsterr link.
-- **Score** — rendered by alphaTab inside QtWebEngine in two passes (natural bar widths, then a fit to the window); one instrument at a time, switched from the track list without interrupting the sound. The current bar follows the music; lyrics are placed under the notes of every track, aligned on the vocal line.
-- **Two sound sources, one switch (Original / Synthèse)**; position and play state are kept when switching.
-  - *Original* — the real recording, played by mpv audio-only in a separate process (own controls bar: play, seek, speed 0.25×–1.5×, volume). Songsterr publishes several videos synchronised on the same bars (full mix, isolated instruments, backing track): the track list's **solo / mute** buttons pick the video that matches, and are only enabled for combinations that exist. *Association des pistes* lets you map an audio stem to an instrument by hand (remembered per song).
-  - *Synthèse* — the whole score played by alphaTab's synthesizer (all instruments, not only the displayed one). **Solo / mute / volume per instrument** (remembered per song), metronome, count-in, loop (drag over bars to select a range, otherwise the whole song), speed, click on the score to seek, and **Export MIDI**. A **soundfont menu** appears when several `.sf2` banks are installed; **GeneralUser GS** is the default, Sonivox the light fallback.
-  - *Instrument variants* — each track uses the General MIDI program of its first Songsterr sound (distortion, overdriven, clean... are different programs), and sound changes made mid-song (`trackSoundAutomations`) are applied at the right beat. Drum accents and ghost notes are kept.
+- **Recherche** : tape le nom d'un morceau dans le champ (une liste de résultats s'ouvre dessous, souris ou flèches + Entrée) ou colle un lien Songsterr. Le bouton ↻ ignore le cache et redemande le morceau à Songsterr.
+- **Morceaux** : fenêtre flottante avec les morceaux récents et les favoris (★), avec recherche. Ouvrir un morceau le remet en tête de l'historique et retrouve la piste et la vidéo choisies la dernière fois ; l'historique est borné, les favoris ne sont jamais éliminés.
+- **Partition** : rendue par alphaTab dans QtWebEngine en deux passes (largeurs naturelles des mesures, puis ajustement à la fenêtre) ; un instrument à la fois, changé depuis la liste des pistes sans interrompre le son. La mesure courante suit la musique ; les paroles sont placées sous les notes de toutes les pistes, alignées sur la ligne de chant. Zoom (Ctrl + / − / 0).
+- **Deux sources sonores, un seul interrupteur (Original / Synthèse)** ; la position et l'état de lecture sont conservés au changement.
+  - *Original* : l'enregistrement réel, lu par mpv en audio seul dans un processus séparé (barre de commandes propre : lecture, position, vitesse 0,25×–1,5×, volume). Songsterr publie plusieurs vidéos synchronisées sur les mêmes mesures (mix complet, instruments isolés, backing track) : les boutons **solo / mute** de la liste des pistes choisissent la vidéo correspondante et ne sont actifs que pour les combinaisons qui existent. L'engrenage de la liste des pistes ouvre la **version audio** et l'**association des pistes**, qui permet de relier à la main une piste audio à un instrument (mémorisé par morceau).
+  - *Synthèse* : toute la partition jouée par le synthétiseur d'alphaTab (tous les instruments, pas seulement celui affiché). **Solo / mute / volume par instrument** (mémorisés par morceau), métronome, décompte, boucle (glisse sur des mesures pour choisir une zone, sinon tout le morceau), vitesse, clic sur la partition pour se déplacer, et **export MIDI**. Un **menu de soundfonts** apparaît quand plusieurs banques `.sf2` sont installées ; **GeneralUser GS** est la valeur par défaut, Sonivox le secours léger.
+  - *Variantes d'instruments* : chaque piste utilise le programme General MIDI du premier son Songsterr (saturation, overdrive, clean… sont des programmes différents), et les changements de son en cours de morceau (`trackSoundAutomations`) sont appliqués au bon temps. Accents et notes fantômes de la batterie conservés.
+- **Marque-pages** : fenêtre flottante par morceau. Ctrl+B pose / retire un marque-page à la mesure courante, Ctrl+← / → saute au précédent / suivant ; un clic sur une ligne saute à la mesure ; renommage et suppression.
+- **Presets sur la partition** : fenêtre flottante « Presets » avec deux pages.
+  - *Sur ce morceau* : la liste des changements (mesure, preset, état) ; un clic saute à la mesure.
+  - *Ajouter* : les presets de la bibliothèque de l'Éditeur, avec filtre ; on clique un preset (il se place à la mesure visée) ou on le **glisse sur la partition**. Un preset déjà chargé dans l'ampli porte le numéro de son emplacement ; un preset « non chargé » se pose quand même mais n'enverra rien tant qu'il n'a pas été envoyé depuis l'Éditeur.
+  - À la lecture, quand la partition atteint une mesure marquée, le changement de preset est envoyé à l'ampli.
+- **Édition (« Ma version »)** : le bouton crayon ouvre une palette d'outils équivalente à celle de Songsterr, rangée en onglets (Temps, Notes, Mesure, Édition), avec une recherche. Les boutons sont grisés quand ils ne s'appliquent pas à la sélection et allumés quand l'effet est déjà posé. On peut changer des notes, des durées, des effets, le tempo… **L'original de Songsterr n'est jamais touché** : « Ma version » = l'original + une liste de changements rangés dans la bibliothèque. Les changements sont à la mesure ou au tempo, et le nombre de mesures ne change jamais, donc les points de synchro de la vidéo restent valables ; défaire un changement revient à retirer son entrée.
 
-## Files not in git
+## Fichiers hors git
 
-Too big or reproducible, so they are in `.gitignore` and installed by `tools\setup_deps.py` (or by each script alone):
+Trop gros ou reproductibles, ils sont dans `.gitignore` et installés par `tools\setup_deps.py` (ou par chaque script seul) :
 
-| File | Size | Script | Used for |
+| Fichier | Taille | Script | Sert à |
 |---|---|---|---|
-| `mpv-2.dll` (repo root) | ~115 MB | `tools\fetch_libmpv.py` | original audio (libmpv, Windows 64-bit, shinchiro builds) |
-| `tabs/vendor/alphatab/` (alphaTab 1.8.4, Bravura font, Sonivox soundfont) | ~5 MB | `tools\fetch_alphatab.py` | score rendering and synthesizer |
-| `tabs/vendor/alphatab/soundfont/GeneralUser-GS.sf2` | ~32 MB | `tools\fetch_soundfonts.py` | better synthesis sounds (optional) |
+| `mpv-2.dll` (racine du dépôt) | ~115 Mo | `tools\fetch_libmpv.py` | audio original (libmpv, Windows 64 bits, builds shinchiro) |
+| `tabs/vendor/alphatab/` (alphaTab 1.8.4, police Bravura, soundfont Sonivox) | ~5 Mo | `tools\fetch_alphatab.py` | rendu de la partition et synthétiseur |
+| `tabs/vendor/alphatab/soundfont/GeneralUser-GS.sf2` | ~32 Mo | `tools\fetch_soundfonts.py` | meilleurs sons de synthèse (facultatif) |
 
-Other local files that are also ignored: `app_settings.json`, `setlists.json`, `tabs_cache/`, `web_profile/` (QtWebEngine profile), `probe_out/`, `melos_lyrics.txt` and the `*.log` files. To add another `.sf2` bank, drop it in `tabs/vendor/alphatab/soundfont/`: it shows up in the soundfont menu.
+Autres fichiers locaux également ignorés : `app_settings.json`, `setlists.json`, `tabs_cache/`, `web_profile/` (profil QtWebEngine), `preset_library/` (bibliothèque de presets de l'Éditeur), `preset_backups/` (sauvegardes de l'ampli), `preset_slot_links.json` (associations emplacement ↔ preset), `probe_out/`, `probe_presets_out/`, `melos_lyrics.txt` et les fichiers `*.log`. Pour ajouter une autre banque `.sf2`, dépose-la dans `tabs/vendor/alphatab/soundfont/` : elle apparaît dans le menu des soundfonts.
 
-## Third-party components
+## Composants tiers
 
-[alphaTab](https://alphatab.net) (MPL-2.0), Bravura font (SIL OFL), Sonivox soundfont bundled with alphaTab, [GeneralUser GS](https://github.com/mrbumpy409/GeneralUser-GS) by S. Christian Collins (its own free-use license), [mpv](https://mpv.io) / libmpv, Songsterr data for personal use.
+[alphaTab](https://alphatab.net) (MPL-2.0), police Bravura (SIL OFL), soundfont Sonivox fournie avec alphaTab, [GeneralUser GS](https://github.com/mrbumpy409/GeneralUser-GS) de S. Christian Collins (sa propre licence d'utilisation libre), [mpv](https://mpv.io) / libmpv, données Songsterr pour un usage personnel. Le catalogue des effets de l'Éditeur provient de MightyEditor ; l'agencement des octets d'un preset et les numéros de CC viennent de Mightier Amp et ont été vérifiés sur l'ampli.
 
-## Connection handling
+## Gestion de la connexion
 
-- The app starts with or without the Mighty plugged in. A navigation-bar indicator always shows the connection state, and a banner appears while disconnected.
-- Modules stay editable while disconnected; the app state is pushed back to the amp on (re)connection, exactly as at launch.
-- The MIDI port is found by keyword by default; the Settings page can pin a specific input/output instead (no silent fallback if the chosen port is missing).
-- The loop station follows the amp's USB audio interface: stream stopped (in-progress take cancelled, existing tracks kept) on disconnection, restarted on reconnection.
+- L'appli démarre avec ou sans le Mighty branché. Un indicateur de la barre de navigation montre toujours l'état de la connexion, et un bandeau apparaît tant qu'il est débranché.
+- Les modules restent modifiables hors connexion ; l'état de l'appli est renvoyé à l'ampli à la (re)connexion, exactement comme au lancement.
+- Le port MIDI est trouvé par mot-clé (« NUX NMP-03 ») par défaut ; la page Réglages permet d'imposer une entrée / sortie précise (sans repli silencieux si le port choisi est absent).
+- La loop station suit l'interface audio USB de l'ampli : flux arrêté à la déconnexion (prise en cours annulée, pistes existantes conservées), relancé à la reconnexion.
+- L'Éditeur relit l'ampli à la connexion et signale tout emplacement modifié en dehors de Melos.
 
-## Audio latency
+## Latence audio
 
-The stream asks for the device's **low** latency (PortAudio's default is the "high" one, 100 ms+ per direction with MME). On Windows, **WASAPI** (selected automatically when available) is much faster than MME; WASAPI exclusive mode goes lower still but takes the sound card away from other apps. The Settings page shows the latency PortAudio reports for the open stream. The looper's "latency compensation" only shifts the *recorded* content of takes — it never moves the click, the display or the drums.
+Le flux demande la latence **basse** du périphérique (celle de PortAudio par défaut est la « haute », 100 ms et plus par sens avec MME). Sous Windows, **WASAPI** (sélectionné automatiquement quand il est disponible) est bien plus rapide que MME ; le mode exclusif WASAPI descend encore plus bas mais prive les autres applications de la carte son. La page Réglages affiche la latence annoncée par PortAudio pour le flux ouvert. La « compensation de latence » du looper ne décale que le contenu *enregistré* des prises : elle ne bouge jamais le click, l'affichage ni la batterie.
 
-## Keyboard shortcuts
+## Raccourcis clavier
 
-- Three modes — off, active window only, or global (work while another window has focus) — switchable from the navigation bar and the **Raccourcis** page. **No default keys**: you pick them on that page (Échap cancels a capture; a key already used by another action is refused).
-- Actions: presets 1–7, next/previous, the loop station — one cyclic key (record → play → overdub) **and** separate keys (record, overdub, play/stop, clear) — plus **drums on/off** and **metronome on/off**. Clear only fires when its key is **held ~1 s**.
-- Next/previous follow the setlist when it is active (switch on + a sequence with steps), otherwise they step through the presets (wrapping).
-- Shortcuts drive the view you are looking at (Dashboard and Classique have separate loop stations and setlists); on the Raccourcis page they keep driving the last one visited.
-- A single bare letter/digit/Space/Enter fires everywhere while shortcuts are on — the page warns about it; prefer F-keys or a Ctrl/Alt combination.
+- Trois modes : désactivés, fenêtre active seulement, ou global (fonctionne quand une autre fenêtre a le focus), modifiables depuis la barre de navigation et la page **Raccourcis**. **Aucune touche par défaut** : tu les choisis sur cette page (Échap annule une capture ; une touche déjà utilisée par une autre action est refusée).
+- Actions : presets 1–7, suivant / précédent, loop station (une touche cyclique enregistrer → lire → overdub **et** des touches séparées : enregistrer, overdub, lecture/arrêt, effacer), plus **batterie on/off** et **métronome on/off**. « Effacer » ne se déclenche qu'en **maintenant la touche ~1 s**.
+- Suivant / précédent suivent la setlist quand elle est active (interrupteur sur ON + une séquence avec des étapes), sinon parcourent les presets (en boucle).
+- Les raccourcis pilotent la vue affichée (Dashboard et Classique ont chacun leur loop station et leur setlist) ; sur la page Raccourcis, ils continuent de piloter la dernière vue visitée.
+- Une simple lettre / chiffre / Espace / Entrée seule se déclenche partout tant que les raccourcis sont actifs : la page le signale ; préfère les touches F ou une combinaison Ctrl / Alt.
 
-## Known protocol quirks
+## Particularités connues du protocole
 
-- MIDI port names aren't stable on Windows (`NUX NMP-03 0`, `2- NUX NMP-03`...) — ports are found by keyword, never by exact name (unless pinned manually in Settings).
-- Presets send no confirmation echo for host-issued commands — the UI updates optimistically instead of waiting on the device.
-- Tuner CC 12 is the pitch class counted from A (0 = A, 5 = D, 7 = E, 10 = G, 2 = B), without octave; CC 72 ≈ 50 when in tune (cents, with a small per-note offset on some notes, e.g. B); CC 71 always reads 0; CC 11 reflects signal detection rather than the enable state — the on/off switch is driven by a local flag instead.
-- The Plug Pro has no hardware looper — looping is entirely software-side (`sounddevice`).
+- Les noms de ports MIDI ne sont pas stables sous Windows (`NUX NMP-03 0`, `2- NUX NMP-03`…) : les ports sont trouvés par mot-clé, jamais par nom exact (sauf s'ils sont imposés à la main dans les Réglages).
+- Les presets n'envoient aucun écho de confirmation pour les commandes venant de l'hôte : l'UI se met à jour de façon optimiste au lieu d'attendre l'appareil.
+- Tuner : le CC 12 est la classe de hauteur comptée depuis le La (0 = La, 5 = Ré, 7 = Mi, 10 = Sol, 2 = Si), sans octave ; le CC 72 ≈ 50 quand c'est accordé (cents, avec un petit décalage par note sur certaines notes, ex. Si) ; le CC 71 vaut toujours 0 ; le CC 11 reflète la détection du signal et non l'état d'activation : l'interrupteur on/off est donc piloté par un drapeau local.
+- Éditeur : changer de preset **efface les modifications non enregistrées** du tampon d'édition de l'ampli, et les modifications par CC n'agissent que sur le preset courant. L'appli garde donc une copie de travail et la renvoie. Les octets du tempo / drapeaux du delay ne sont pas modifiables par CC : ils sont conservés mais pas poussés.
+- Le Plug Pro n'a pas de looper matériel : le bouclage est entièrement logiciel (`sounddevice`).
 
-See `docs/protocol_notes.md` for the full empirically verified MIDI/SysEx reference.
+Voir `docs/protocol_notes.md` et `docs/editor_protocol.md` pour la référence MIDI/SysEx complète, vérifiée empiriquement.
+
+## Licence
+
+MIT, voir [`LICENSE`](LICENSE).

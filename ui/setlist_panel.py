@@ -32,7 +32,8 @@ from setlist.player import SetlistPlayer
 from state.amp_state import AmpState
 from ui.module_card import MODULE_COLORS, ModuleCard
 from ui.power_pill import PowerPill as _BasePill
-from ui.preset_panel import PRESET_COLORS, _contrast
+from ui.preset_panel import _contrast
+from ui.theme import PRESET_COLORS, qc, rgba
 from ui.widgets import NoWheelComboBox, NoWheelSpinBox
 
 ACCENT = MODULE_COLORS["setlist"]
@@ -50,7 +51,7 @@ def _font(px: int, bold: bool = False) -> QFont:
 
 
 def _text_color() -> QColor:
-    return QColor("#f2f2f2" if isDarkTheme() else "#1f1f1f")
+    return qc("text")
 
 
 class PowerPill(_BasePill):
@@ -200,7 +201,7 @@ class StepRow(QFrame):
         super().__init__(parent)
         self._index = index
         self.setObjectName("StepRow")
-        self.setStyleSheet("#StepRow { background: rgba(44,117,238,0.14); border-radius: 6px; }" if current
+        self.setStyleSheet(f"#StepRow {{ background: {rgba(ACCENT, 0.16)}; border-radius: 8px; }}" if current
                            else "#StepRow { background: transparent; }")
         row = QHBoxLayout(self)
         row.setContentsMargins(4, 2, 4, 2)
@@ -257,6 +258,7 @@ class SetlistPanel(ModuleCard):
         self._sender = sender
         self._settings = load_settings()
         self._editing = False
+        self._stale_rows = True
         self._delete_armed = False
 
         self._player = SetlistPlayer()
@@ -636,7 +638,19 @@ class SetlistPanel(ModuleCard):
         self._next_btn.setEnabled(has_steps)
 
     def _refresh_steps(self):
-        """Reconstruit les lignes de l'éditeur."""
+        """Reconstruit les lignes de l'éditeur (uniquement en mode édition : cachées, elles coûtaient
+        plusieurs secondes au lancement, construites trois fois de suite)."""
+        if not self._editing:
+            self._stale_rows = True
+            return
+        self._stale_rows = False
+        self.setUpdatesEnabled(False)
+        try:
+            self._rebuild_rows()
+        finally:
+            self.setUpdatesEnabled(True)
+
+    def _rebuild_rows(self):
         while self._rows.count() > 1:   # garde le stretch final
             item = self._rows.takeAt(0)
             widget = item.widget()

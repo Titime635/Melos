@@ -20,8 +20,8 @@ import time
 from PySide6.QtCore import QObject, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QFileDialog, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
-from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, HeaderCardWidget, InfoBar, InfoBarPosition,
-                            MessageBox, PushButton, SegmentedWidget, SwitchButton)
+from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, InfoBar, InfoBarPosition,
+                            MessageBox, PushButton, SwitchButton)
 
 import diagnostics
 import paths
@@ -32,8 +32,10 @@ from midi import protocol
 from settings import load_settings, update_settings
 from shortcuts.manager import ShortcutManager
 from ui import theme
+from ui.module_card import PageCard
 from ui.preset_panel import NAMES_FILE
 from ui.shortcuts_interface import MODE_LABELS
+from ui.tab_widgets import SegmentedPill
 from ui.widgets import NoWheelComboBox
 from setlist import model as setlist_model
 
@@ -90,8 +92,8 @@ class SettingsInterface(QScrollArea):
     # ---------- helpers ----------
 
     @staticmethod
-    def _card(title: str) -> tuple[HeaderCardWidget, QVBoxLayout]:
-        card = HeaderCardWidget()
+    def _card(title: str) -> tuple[PageCard, QVBoxLayout]:
+        card = PageCard()
         card.setTitle(title)
         body = QVBoxLayout()
         body.setSpacing(10)
@@ -263,7 +265,7 @@ class SettingsInterface(QScrollArea):
 
     def _build_midi(self):
         card, body = self._card("Port MIDI")
-        self._midi_mode = SegmentedWidget()
+        self._midi_mode = SegmentedPill()
         self._midi_mode.addItem("auto", "Automatique", lambda: self._on_midi_mode("auto"))
         self._midi_mode.addItem("manual", "Manuel", lambda: self._on_midi_mode("manual"))
         body.addWidget(self._midi_mode)
@@ -345,14 +347,29 @@ class SettingsInterface(QScrollArea):
 
     def _build_theme(self):
         card, body = self._card("Thème")
-        self._theme_switch = SegmentedWidget()
+        self._theme_switch = SegmentedPill()
         for key, label in THEME_LABELS.items():
             self._theme_switch.addItem(key, label, lambda _=False, k=key: self._on_theme(k))
         current = load_settings()["ui"]["theme"]
         self._theme_switch.setCurrentItem(current if current in THEME_LABELS else "auto")
         body.addWidget(self._theme_switch)
         body.addWidget(self._note("« Windows » suit le thème clair / sombre du système."))
+        row = QHBoxLayout()
+        row.addWidget(BodyLabel("Contraste renforcé (thème sombre)"), 1)
+        self._contrast_switch = SwitchButton()
+        self._contrast_switch.setOnText("Oui")
+        self._contrast_switch.setOffText("Non")
+        self._contrast_switch.setChecked(bool(load_settings()["ui"].get("contrast", False)))
+        self._contrast_switch.checkedChanged.connect(self._on_contrast)
+        row.addWidget(self._contrast_switch)
+        body.addLayout(row)
+        body.addWidget(self._note("Fond presque noir, texte et couleurs d'accent plus vifs."))
         return card
+
+    def _on_contrast(self, on: bool):
+        update_settings({"ui": {**load_settings()["ui"], "contrast": bool(on)}})
+        theme.set_contrast(on)
+        theme.refresh_theme()
 
     def _on_theme(self, key: str):
         update_settings({"ui": {**load_settings()["ui"], "theme": key}})

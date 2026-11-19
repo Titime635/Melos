@@ -66,12 +66,30 @@ def start_stall_probe() -> QTimer:
     """Diagnostic : note dans le journal tout blocage du thread Qt > 150 ms (une coupure audio périodique peut venir de là)."""
     import time
     log = logging.getLogger("melos.stall")
-    state = {"last": time.monotonic(), "t0": time.monotonic()}
+    state = {"last": time.monotonic(), "t0": time.monotonic(), "dumped": False}
+    main_id = __import__("threading").main_thread().ident
+
+    def watch():
+        """Fil de surveillance : si le thread Qt ne répond plus depuis > 1 s, note OÙ il est bloqué (pile Python), une fois par blocage."""
+        import sys
+        import traceback
+        while True:
+            time.sleep(0.25)
+            gap = time.monotonic() - state["last"]
+            if gap > 1.0 and not state["dumped"]:
+                state["dumped"] = True
+                frame = sys._current_frames().get(main_id)
+                if frame is not None:
+                    log.warning("thread Qt bloqué depuis %.1f s — il est ici :\n%s", gap, "".join(traceback.format_stack(frame)[-12:]))
+
+    import threading
+    threading.Thread(target=watch, name="melos-stall-watch", daemon=True).start()
 
     def tick():
         now = time.monotonic()
         gap = (now - state["last"]) * 1000
         state["last"] = now
+        state["dumped"] = False
         if gap > 150:
             log.warning("thread Qt bloqué %.0f ms (attendu 20) à %.1f min de lancement", gap, (now - state["t0"]) / 60)
 

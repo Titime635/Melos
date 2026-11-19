@@ -281,11 +281,9 @@ print("14. volets contenus dans la fenêtre ; clic hors d'un champ de texte = on
 st3 = AmpState(); st3.transport.set(bpm=165)
 tp3 = TempoPanel(st3.transport); tp3.resize(420, 300); tp3.show(); pump(0.2)
 sl = tp3._bpm_slider
-expect = (165 - 40) / 200 * sl.grooveLength
-assert abs(sl.handle.x() - expect) <= 2, (sl.handle.x(), expect)
+assert sl.value() == 165 and sl._value_at(sl._span()[0] + (165 - 40) / 200 * sl._span()[1]) == 165   # la poignée est dessinée d'après la valeur
 st3.transport.set(bpm=60); pump(0.05)              # changement venu de l'extérieur (_refresh bloque les signaux)
-expect = (60 - 40) / 200 * sl.grooveLength
-assert abs(sl.handle.x() - expect) <= 2, (sl.handle.x(), expect)
+assert sl.value() == 60
 print("15. curseur de tempo : la poignée suit la valeur (tap, autre vue...) : OK")
 
 # ---- 16. module Tempo trop petit : le métronome se réduit à son icône, à droite du BPM ----

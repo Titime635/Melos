@@ -11,11 +11,13 @@ silencieux). Aucune touche par défaut : tout est à définir ici.
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QScrollArea
 from qfluentwidgets import (
-    HeaderCardWidget, PushButton, BodyLabel, StrongBodyLabel, SegmentedWidget,
+    PushButton, BodyLabel, StrongBodyLabel,
     TransparentToolButton, FluentIcon,
 )
 
 from shortcuts.actions import ACTIONS, BY_ID, GROUPS
+from ui.module_card import PageCard
+from ui.tab_widgets import SegmentedPill
 from shortcuts.manager import MAX_KEYS, MODE_GLOBAL, MODE_OFF, MODE_WINDOW, ShortcutManager, key_parts, risk_note
 
 NO_KEY_TEXT = "—"
@@ -50,14 +52,14 @@ class ShortcutsInterface(QScrollArea):
         layout.setSpacing(16)
 
         # --- Général ---
-        general = HeaderCardWidget()
+        general = PageCard()
         general.setTitle("Raccourcis clavier globaux")
         general_layout = QVBoxLayout()
         general.viewLayout.addLayout(general_layout)
 
         mode_row = QHBoxLayout()
         mode_row.addWidget(BodyLabel("Mode :"))
-        self._mode_switcher = SegmentedWidget()
+        self._mode_switcher = SegmentedPill()
         for mode, label in MODE_LABELS.items():
             self._mode_switcher.addItem(mode, label, lambda _checked=False, m=mode: manager.set_mode(m))
         self._mode_switcher.setCurrentItem(manager.mode)
@@ -90,7 +92,7 @@ class ShortcutsInterface(QScrollArea):
         self._set_buttons2: dict[str, PushButton] = {}
         self._clear_buttons2: dict[str, TransparentToolButton] = {}
         for group in GROUPS:
-            card = HeaderCardWidget()
+            card = PageCard()
             card.setTitle(group)
             rows = QVBoxLayout()
             rows.setSpacing(6)

@@ -26,6 +26,7 @@ from qfluentwidgets import (BodyLabel, CaptionLabel, StrongBodyLabel, SwitchButt
 from state.transport_state import TransportState, UNITS
 from ui import looper_widgets as lw
 from ui.module_card import MODULE_COLORS, ModuleCard
+from ui.theme import ON_SOFT, mix, pal, qc, style_popup
 from ui.popup_utils import show_popup_under
 from ui.widgets import NoWheelSpinBox, NoWheelComboBox, NoWheelSlider
 
@@ -33,8 +34,8 @@ TAP_RESET_S = 2.5   # au-delà, le prochain appui repart de zéro
 TAP_WINDOW = 5      # nombre d'intervalles moyennés
 BPM_MIN, BPM_MAX = 40, 240
 SIGNATURES = [(4, 4), (6, 8), (12, 8), (3, 4)]   # boutons de choix rapide
-ACCENT = "#F2C94C"                               # couleur du module (cf ui/dashboard_interface.py)
-ON_ACCENT = "#1b1b1b"                            # texte posé sur l'accent
+ACCENT = MODULE_COLORS["tempo"]                  # couleur du module
+ON_ACCENT = ON_SOFT                              # texte posé sur l'accent
 TAP_TIP = "Tape au rythme voulu (3 appuis ou plus) pour régler le tempo"
 
 
@@ -194,14 +195,14 @@ class TempoPanel(ModuleCard):
         self._transport.set(bpm=max(BPM_MIN, min(BPM_MAX, self._transport.bpm + direction * step)))
 
     def _restyle_bpm_label(self):
-        self._bpm_label.setStyleSheet(f"color: {'#f5f5f5' if isDarkTheme() else '#1f1f1f'};")
+        from PySide6.QtGui import QColor
+        col = QColor(ACCENT) if isDarkTheme() else mix(QColor(ACCENT), qc("text"), 0.3)   # en clair : un peu assombri pour rester lisible
+        self._bpm_label.setStyleSheet(f"color: {col.name()};")
 
     def _popup_frame(self, name: str) -> QFrame:
         popup = QFrame(self, Qt.Popup)
         popup.setObjectName(name)
-        popup.setStyleSheet(
-            f"#{name} {{ background: palette(window); border: 1px solid rgba(128,128,128,0.45);"
-            " border-radius: 8px; }")
+        style_popup(popup)
         return popup
 
     def _build_custom_popup(self):

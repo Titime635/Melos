@@ -52,8 +52,8 @@
   #score::-webkit-scrollbar-track { background:transparent; }
   #score::-webkit-scrollbar-thumb { background:var(--thumb); border-radius:7px; border:4px solid transparent; background-clip:padding-box; min-height:48px; }
   #score::-webkit-scrollbar-thumb:hover { background:var(--muted); background-clip:padding-box; }
-  .at-cursor-bar { background:color-mix(in srgb, var(--accent) 12%, transparent); }
-  .at-cursor-beat { background:var(--accent); width:2px; border-radius:1px; }
+  .at-cursor-bar { background:color-mix(in srgb, var(--cur, var(--accent)) 15%, transparent); box-shadow:inset 0 -2px 0 color-mix(in srgb, var(--cur, var(--accent)) 55%, transparent); }
+  .at-cursor-beat { background:var(--cur, var(--accent)); width:2px; border-radius:1px; }
   .at-selection div { background:color-mix(in srgb, var(--accent) 16%, transparent); }
   .at-highlight * { fill:var(--accent); stroke:var(--accent); }
 </style></head>
@@ -96,7 +96,7 @@ const melos = (() => {
     if (!starts.length || i >= starts.length) return null;
     const a = starts[i];
     const b = i + 1 < starts.length ? starts[i + 1] : a + (i > 0 ? a - starts[i - 1] : 2000);
-    const frac = (beat.playbackStart - mb.start) / mb.calculateDuration();
+    const frac = beat.playbackStart / mb.calculateDuration();     // playbackStart est déjà relatif à la mesure
     return a + (b - a) * Math.max(0, Math.min(1, frac));
   }
 
@@ -381,21 +381,26 @@ const melos = (() => {
   }, {passive: false, capture: true});
   // si la fenêtre n'a pas pris elle-même ces raccourcis (le focus est dans la page), on les lui renvoie
   const EDIT_KEYS = new Set(['0','1','2','3','4','5','6','7','8','9','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Delete','Backspace','Insert','Escape','r','R','.','Enter']);
-  // pavé numérique : chiffres, point et Entrée par leur code physique (selon le clavier et le verrouillage numérique, `key` peut valoir « End », « Clear »…)
-  function keyOf(e) {
-    const numLock = !e.getModifierState || e.getModifierState('NumLock') || /^[0-9.]$/.test(e.key);      // verrouillage éteint : ce sont des flèches
+  // pavé numérique : QtWebEngine ne suit pas toujours le verrouillage numérique, et `key` peut alors valoir « End », « Clear »,
+  // « ArrowDown »... à la place du chiffre. On repère la touche par son code physique ; quand `key` n'est pas un chiffre, on
+  // envoie aussi le chiffre (`pad`) et Python tranche avec l'état réel du verrouillage numérique.
+  function padOf(e) {
     const m = /^Numpad(\d)$/.exec(e.code || '');
-    if (m && numLock) return m[1];
-    if (e.code === 'NumpadDecimal' && numLock) return '.';
+    return m ? m[1] : (e.code === 'NumpadDecimal' ? '.' : '');
+  }
+  function keyOf(e) {
+    const pad = padOf(e);
+    if (pad && /^[0-9.]$/.test(e.key)) return e.key;
+    if (pad && e.getModifierState && e.getModifierState('NumLock')) return pad;
     if (e.code === 'NumpadEnter') return 'Enter';
     return e.key;
   }
   document.addEventListener('keydown', e => {
-    const key = keyOf(e);
+    const pad = padOf(e), key = keyOf(e), ambiguous = pad && key !== pad;      // touche du pavé dont on ne sait pas si c'est un chiffre
     const clip = editOn && (e.ctrlKey || e.metaKey) && !e.altKey && ['c', 'x', 'v'].includes(key.toLowerCase());
-    if (!editOn || ((e.ctrlKey || e.metaKey) && !clip) || e.altKey || !(clip || EDIT_KEYS.has(key))) return;
+    if (!editOn || ((e.ctrlKey || e.metaKey) && !clip) || e.altKey || !(clip || ambiguous || EDIT_KEYS.has(key))) return;
     if (key === 'Escape') { esel = null; drawOverlays(); }
-    emit('editkey', {key, shift: e.shiftKey, ctrl: clip});
+    emit('editkey', {key, shift: e.shiftKey, ctrl: clip, pad: ambiguous ? pad : ''});
     e.preventDefault();
   }, true);
   document.addEventListener('keydown', e => {
@@ -635,7 +640,15 @@ const melos = (() => {
   // ligne (jamais à chaque mesure), avec une animation douce ; une molette/glissement de ta part suspend le suivi 4 s.
   const FOCUS = 0.33;
   let lastRow = -1, userScrollUntil = 0, anim = 0, refocus = false, wasPlaying = false;
+  // Couleur du curseur = couleur du preset en vigueur à cette mesure (dernier changement de preset posé avant elle)
+  function tintCursor(bar) {
+    let col = null, at = -1;
+    for (const p of presets) { if (p[0] <= bar && p[0] >= at && p[2]) { col = p[2]; at = p[0]; } }
+    document.documentElement.style.setProperty('--cur', col || '');
+    if (!col) document.documentElement.style.removeProperty('--cur');
+  }
   function followBeat(beat) {
+    try { tintCursor(beat.voice.bar.index); } catch (e) {}
     if (!api || !api.boundsLookup) return;
     const b = api.boundsLookup.findBeat(beat);
     if (!b) return;
@@ -791,13 +804,19 @@ const melos = (() => {
     clk.nodes.push(o); o.onended = () => { const i = clk.nodes.indexOf(o); if (i >= 0) clk.nodes.splice(i, 1); };
   }
   const stopClicks = () => { for (const o of clk.nodes.splice(0)) { try { o.stop(); } catch (err) { /* déjà arrêté */ } } };
+  // clics d'une mesure : un par noire (6/8 = 3 clics, pas 6), comme le métronome de la synthèse ; si la mesure ne contient pas un nombre
+  // entier de noires (5/8, 7/8...), un par unité de la signature.
+  function pulses(mb) {
+    const n = mb.timeSignatureNumerator || 4, q = 4 * n / (mb.timeSignatureDenominator || 4);
+    return Math.abs(q - Math.round(q)) < 1e-6 && q >= 1 ? Math.round(q) : n;
+  }
   function beatTable() {                                  // temps de chaque mesure : réparti entre deux points de synchro
     if (clk.beats) return clk.beats;
     const out = [];
     if (api && api.score && starts.length) {
       const mbs = api.score.masterBars;
       for (let i = 0; i < Math.min(starts.length, mbs.length); i++) {
-        const num = mbs[i].timeSignatureNumerator || 4, a = starts[i], b = i + 1 < starts.length ? starts[i + 1] : a + (i ? a - starts[i - 1] : 2000);
+        const num = pulses(mbs[i]), a = starts[i], b = i + 1 < starts.length ? starts[i + 1] : a + (i ? a - starts[i - 1] : 2000);
         for (let k = 0; k < num; k++) out.push({t: a + (b - a) * k / num, acc: k === 0});
       }
     }
@@ -856,7 +875,7 @@ const melos = (() => {
     // décompte : une mesure de clics (au tempo de la mesure `bar`, vitesse r) ; renvoie les ms avant le temps fort de départ
     countInBar(bar, r) {
       if (!api || !api.score || !starts.length) return 0;
-      const i = Math.max(0, Math.min(bar, starts.length - 1)), mbs = api.score.masterBars, num = (mbs[i] && mbs[i].timeSignatureNumerator) || 4;
+      const i = Math.max(0, Math.min(bar, starts.length - 1)), mbs = api.score.masterBars, num = mbs[i] ? pulses(mbs[i]) : 4;
       const a = starts[i], b = i + 1 < starts.length ? starts[i + 1] : a + (i ? a - starts[i - 1] : 2000);
       const interval = (b - a) / num / (r || 1), t0 = audioCtx().currentTime + 0.06;
       for (let k = 0; k < num; k++) clickAt(t0 + k * interval / 1000, k === 0);
@@ -873,11 +892,14 @@ const melos = (() => {
       if (beat) { refocus = true; userScrollUntil = 0; followBeat(beat); }
     },
     // Nouveaux points de synchro (ms de début de chaque mesure dans l'audio) sans recharger ni redessiner la partition
-    setSync(list) {
+    // `flat` (optionnel) : [mesure, passage, ms] pour chaque mesure JOUÉE quand la partition a des reprises
+    setSync(list, flat) {
       starts = list.slice(); clk.beats = null;
       if (!api || !api.score) return;
-      api.score.applyFlatSyncPoints(list.map((ms, i) => ({barIndex: i, barOccurence: 0, barPosition: 0,
-                                                          millisecondOffset: Math.max(0, Math.round(ms))})));
+      const pts = flat && flat.length
+        ? flat.map(p => ({barIndex: p[0], barOccurence: p[1], barPosition: 0, millisecondOffset: Math.max(0, Math.round(p[2]))}))
+        : list.map((ms, i) => ({barIndex: i, barOccurence: 0, barPosition: 0, millisecondOffset: Math.max(0, Math.round(ms))}));
+      api.score.applyFlatSyncPoints(pts);
       api.loadMidiForScore();
     },
     // état de la vidéo, envoyé par Python toutes les ~50 ms
@@ -928,7 +950,7 @@ const melos = (() => {
     clearRange() { synth.clearRange(); },
     // glisser-déposer depuis une fenêtre Python : survol (renvoie la mesure visée, -1 si aucune), dépôt, annulation
     dragHover(cx, cy, fine) { const h = barAtClient(cx, cy, true); showDrop(h, h && fine ? beatAtX(h) : -1); autoScroll(cy); return h ? h.mb.index : -1; },
-    dragEnd(cx, cy) { const h = barAtClient(cx, cy, true); clearDrop(); return h ? {bar: h.mb.index, beat: beatAtX(h)} : -1; },
+    dragEnd(cx, cy) { const h = barAtClient(cx, cy, true); clearDrop(); return h ? JSON.stringify({bar: h.mb.index, beat: beatAtX(h)}) : '-1'; },   // chaîne : QtWebEngine ne renvoie pas les objets JS à Python
     dragCancel() { clearDrop(); },
     drain() {
       if (posDirty && api && api.score && mode === 'synth') {          // position du synthétiseur : toujours la plus récente

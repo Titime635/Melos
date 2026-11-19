@@ -20,9 +20,9 @@ from datetime import datetime
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
-from qfluentwidgets import (Action, BodyLabel, CaptionLabel, FlowLayout, FluentIcon, HeaderCardWidget, IconWidget,
+from qfluentwidgets import (Action, BodyLabel, CaptionLabel, FlowLayout, FluentIcon, IconWidget,
                             InfoBar, InfoBarPosition, MenuAnimationType, MessageBox, PrimaryPushButton, PushButton, RoundMenu,
-                            ScrollArea, SearchLineEdit, SegmentedWidget, SwitchButton, ToggleButton, ToolButton,
+                            ScrollArea, SearchLineEdit, SwitchButton, ToggleButton, ToolButton,
                             themeColor)
 
 from editor.catalog import get_catalog
@@ -33,6 +33,9 @@ from ui.editor_dialogs import BackupsDialog, HistoryDialog, NameDialog, Overwrit
 from ui.editor_widgets import (EFFECT_COLOR, EFFECT_NAME, GREEN, GREY, ORANGE, STATE_INFO, BlockChip, ChainArrow,
                                EditableValue, ElidedLabel, GlyphWidget, LibraryRow, ParamGrid, ParamRow,
                                PresetInfoDialog, SlotCard, StateLegend, TagPill, fluent_tip, readable)
+from ui.module_card import PageCard
+from ui.theme import pal
+from ui.tab_widgets import SegmentedPill
 from ui.widgets import NoWheelComboBox, NoWheelSlider
 
 from ui.preset_panel import PRESET_COLORS, SlotNames   # mêmes couleurs et MÊMES noms que le panneau Presets
@@ -61,9 +64,9 @@ class _Coalescer:
             return self._pending.pop(key, None)
 
 
-def section_card(title: str, icon, color=None) -> HeaderCardWidget:
+def section_card(title: str, icon, color=None) -> PageCard:
     """Carte à en-tête commune à toute la page : icône colorée + titre."""
-    card = HeaderCardWidget()
+    card = PageCard()
     card.setTitle(title)
     ic = icon if isinstance(icon, QWidget) else IconWidget(icon)
     if not isinstance(icon, QWidget):
@@ -98,7 +101,7 @@ def tool_button(icon, tip: str, slot, cls=ToolButton) -> ToolButton:
     return b
 
 
-class LibraryPanel(HeaderCardWidget):
+class LibraryPanel(PageCard):
     """Bibliothèque : la source de travail. Sélectionner un preset = l'éditer à droite."""
 
     def __init__(self, page: "EditorInterface"):
@@ -126,7 +129,7 @@ class LibraryPanel(HeaderCardWidget):
         self.search.textChanged.connect(lambda _=None: self.reload())
         col.addWidget(self.search)
 
-        self.scope_bar = SegmentedWidget()
+        self.scope_bar = SegmentedPill()
         for key, text in (("all", "Tous"), ("on", "Sur le Mighty"), ("off", "Hors Mighty")):
             self.scope_bar.addItem(routeKey=key, text=text, onClick=lambda _=False, k=key: self._set_scope(k))
         self.scope_bar.setCurrentItem("all")
@@ -555,7 +558,7 @@ class EditorInterface(QWidget):
         block_col.addLayout(top)
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("color: rgba(128,128,128,60); background: rgba(128,128,128,60); max-height: 1px; border: none;")
+        sep.setStyleSheet(f"color: {pal()['border']}; background: {pal()['border']}; max-height: 1px; border: none;")
         block_col.addWidget(sep)
         self.param_grid = ParamGrid()
         block_col.addWidget(self.param_grid)

@@ -16,17 +16,17 @@ class Category:
 
 
 CATEGORIES = (
-    Category("MET", "Métronome", "Métro", "#90A4AE"),
-    Category("ROCK", "Rock", "Rock", "#E53935"),
-    Category("CTRY", "Country", "Country", "#A1887F"),
-    Category("BLUES", "Blues", "Blues", "#1E88E5"),
-    Category("METAL", "Metal", "Metal", "#8E24AA"),
-    Category("FUNK", "Funk", "Funk", "#FB8C00"),
-    Category("JAZZ", "Jazz", "Jazz", "#26A69A"),
-    Category("BALD", "Ballade", "Ballade", "#F06292"),
-    Category("POP", "Pop", "Pop", "#FDD835"),
-    Category("REGGAE", "Reggae", "Reggae", "#43A047"),
-    Category("ELEC", "Électro", "Électro", "#3D5AFE"),
+    Category("MET", "Métronome", "Métro", "#8d96ab"),
+    Category("ROCK", "Rock", "Rock", "#d9727c"),
+    Category("CTRY", "Country", "Country", "#b59a8a"),
+    Category("BLUES", "Blues", "Blues", "#6aa8d2"),
+    Category("METAL", "Metal", "Metal", "#a590e0"),
+    Category("FUNK", "Funk", "Funk", "#e0a458"),
+    Category("JAZZ", "Jazz", "Jazz", "#6fc3a1"),
+    Category("BALD", "Ballade", "Ballade", "#e17f9f"),
+    Category("POP", "Pop", "Pop", "#c9b86a"),
+    Category("REGGAE", "Reggae", "Reggae", "#8cc07a"),
+    Category("ELEC", "Électro", "Électro", "#7f8fe0"),
 )
 BY_KEY = {c.key: c for c in CATEGORIES}
 

@@ -44,22 +44,14 @@ from midi.sender import MidiSender
 from state.amp_state import AmpState
 from paths import PRESET_NAMES_FILE
 from ui.module_card import MODULE_COLORS, ModuleCard
+from ui.theme import PRESET_COLORS, STATE_COLORS, qc, style_popup
 from ui.popup_utils import show_popup_under
 
 # Fichier à côté de ce module, indépendant du dossier de lancement de l'appli
 # (si tu as déjà des presets renommés, déplace l'ancien preset_names.json ici)
 NAMES_FILE = PRESET_NAMES_FILE
 
-# Couleur associée à chaque preset (fournie par l'utilisateur)
-PRESET_COLORS = {
-    0: "#61D149",
-    1: "#E98D32",
-    2: "#EA5A53",
-    3: "#2C75EE",
-    4: "#46D1E6",
-    5: "#DF74D6",
-    6: "#FBB6F4",
-}
+# Couleur associée à chaque preset : palette douce commune (ui/theme.py), la même que sur la partition
 
 GAP = 8
 MAX_BUTTON_H = 72
@@ -78,8 +70,8 @@ def default_name(index: int) -> str:
 
 # États d'un emplacement par rapport à la bibliothèque (cf editor/workbench.py) qui méritent d'être signalés ici
 FLAG_TIPS = {
-    "ahead": ("À renvoyer", "#F5A524", "le preset de la bibliothèque a été modifié depuis son envoi vers l'ampli"),
-    "changed": ("Modifié sur l'ampli", "#E5484D",
+    "ahead": ("À renvoyer", STATE_COLORS["warn"], "le preset de la bibliothèque a été modifié depuis son envoi vers l'ampli"),
+    "changed": ("Modifié sur l'ampli", STATE_COLORS["error"],
                 "le contenu de l'ampli a changé en dehors de Melos (différent de ce qui y a été envoyé)"),
 }
 
@@ -258,10 +250,21 @@ class PresetButton(QAbstractButton):
         rect = QRectF(self.rect()).adjusted(1, 1, -1, -1)
         radius = min(10.0, rect.height() / 2)
         color = QColor(self._color)
-        theme_fg = QColor("#e8e8e8" if isDarkTheme() else "#202020")
+        theme_fg = qc("text")
 
         if not enabled:
             color.setAlpha(110)
+        if self._active and enabled:
+            # halo : trois liserés de plus en plus pâles autour du bouton plein (comme le voyant de l'ampli)
+            base = rect.adjusted(3, 3, -3, -3)
+            for grow, alpha in ((2.6, 38), (1.6, 70), (0.8, 120)):
+                glow = QColor(color); glow.setAlpha(alpha)
+                gp = QPen(glow); gp.setWidthF(1.6)
+                p.setPen(gp); p.setBrush(Qt.NoBrush)
+                r = base.adjusted(-grow, -grow, grow, grow)
+                p.drawRoundedRect(r, radius + grow, radius + grow)
+            rect = base
+            radius = min(radius, rect.height() / 2)
         if self._active:
             bg, border, fg = QColor(color), QColor(color), _contrast(color)
         else:
@@ -294,7 +297,7 @@ class PresetButton(QAbstractButton):
                 p.drawText(rect.adjusted(9, 5, -8, 0), Qt.AlignTop | Qt.AlignLeft, number)
         if self._flag in FLAG_TIPS and enabled:   # pastille d'alerte : l'emplacement n'est plus identique à la bibliothèque
             dot = QColor(FLAG_TIPS[self._flag][1])
-            ring = QPen(QColor("#1b1b1b") if isDarkTheme() else QColor("#ffffff")); ring.setWidthF(1.6)
+            ring = QPen(qc("surface")); ring.setWidthF(1.6)
             p.setPen(ring); p.setBrush(dot)
             p.drawEllipse(rect.topRight() + QPointF(-9, 9), 4.5, 4.5)
         p.end()
@@ -386,8 +389,7 @@ class PresetPanel(ModuleCard):
 
         popup = QFrame(self, Qt.Popup)
         popup.setObjectName("PresetRenamePopup")
-        popup.setStyleSheet("#PresetRenamePopup { background: palette(window); "
-                            "border: 1px solid rgba(128,128,128,0.45); border-radius: 8px; }")
+        style_popup(popup)
         v = QVBoxLayout(popup)
         v.setContentsMargins(14, 12, 14, 12)
         v.setSpacing(8)

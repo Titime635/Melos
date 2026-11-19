@@ -17,7 +17,7 @@ from pathlib import Path
 from paths import APP_DIR
 from .model import Score
 from .songsterr_parser import parse_score
-from .sync import VideoSync, allowed_in, expected_bar_ms, to_syncs
+from .sync import VideoSync, allowed_in, expected_bar_ms, played_sequence, to_syncs
 
 log = logging.getLogger("melos.tabs")
 CACHE_DIR = APP_DIR / "tabs_cache"
@@ -243,7 +243,9 @@ def load_song(url: str, refresh: bool = False, country: str = "FR") -> tuple[Sco
     score = parse_score(meta, tracks)
     if not score.tracks:
         raise TabError("Aucune piste exploitable dans ce morceau.")
-    syncs = to_syncs(points, score.measure_count, expected_bar_ms(score))
+    first = next((t for t in score.tracks if t.measures), None)
+    seq = played_sequence(first.measures) if first else None
+    syncs = to_syncs(points, score.measure_count, expected_bar_ms(score), seq)
     try:
         available = filter_available(syncs, key, country, refresh, score.artist, score.title)
     except Exception:

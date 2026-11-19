@@ -134,7 +134,7 @@ class _Row(QFrame):
         lay.setSpacing(10)
         self.badge = QFrame(self)                       # pastille de l'instrument : teinte douce + icône de sa couleur
         self.badge.setFixedSize(34, 34)
-        self.badge.setStyleSheet(f"QFrame{{background:{rgba(self.color, 0.16)};border-radius:10px}}")
+        self.badge.setStyleSheet(f"QFrame{{background:{rgba(self.color, 0.26)};border-radius:10px}}")
         self.badge.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self._badge_icon = QWidget(self.badge)
         self._badge_icon.setGeometry(0, 0, 34, 34)
@@ -182,7 +182,7 @@ class _Row(QFrame):
     def set_selected(self, on: bool):
         """Sélectionnée : fine bordure de la couleur de l'instrument + fond à peine teinté. Sinon : survol discret."""
         if on:
-            self.setStyleSheet(f"#trackRow{{background:{rgba(self.color, 0.09)};border:1px solid {rgba(self.color, 0.6)};"
+            self.setStyleSheet(f"#trackRow{{background:{rgba(self.color, 0.14)};border:1px solid {rgba(self.color, 0.8)};"
                                f"border-radius:11px}}")
         else:
             self.setStyleSheet("#trackRow{background:transparent;border:1px solid transparent;border-radius:11px}"

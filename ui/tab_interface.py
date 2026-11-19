@@ -12,6 +12,7 @@ Page « Partition » : tablature Songsterr (alphaTab dans QtWebEngine) synchroni
 """
 
 import json
+from statistics import median
 import logging
 import time
 
@@ -40,7 +41,7 @@ from tabs.debug import dbg
 from tabs.model import Score
 from tabs.score_edits import apply_edits, edited_bars
 from tabs.player import AudioPlayer, PlayerError
-from tabs.sync import VideoSync
+from tabs.sync import VideoSync, expected_bar_ms
 
 log = logging.getLogger("melos.tabs")
 
@@ -58,6 +59,8 @@ if QWebEngineView is not None:
         """Page web dont les messages de la console JavaScript sont recopiés dans la console de l'appli."""
 
         def javaScriptConsoleMessage(self, level, message, line, source):
+            if "skipped rendering because of width=0" in message:
+                return   # alphaTab prévient qu'il attend que la page soit visible : normal au lancement
             dbg("js", message[:300])
             super().javaScriptConsoleMessage(level, message, line, source)
 
@@ -809,6 +812,11 @@ class TabInterface(QWidget):
     def _dropped_on(self, kind: str, payload, bar):
         """`bar` : ce que renvoie la page au dépôt — {"bar": mesure, "beat": temps} (ou juste le numéro de mesure)."""
         beat = 0
+        if isinstance(bar, str):                                 # la page renvoie une chaîne JSON {"bar", "beat"} (ou « -1 »)
+            try:
+                bar = json.loads(bar or "-1")
+            except ValueError:
+                bar = -1
         if isinstance(bar, dict):
             beat, bar = bar.get("beat") or 0, bar.get("bar")
         if not isinstance(bar, (int, float)) or isinstance(bar, bool) or bar < 0 or self._score is None:
@@ -872,7 +880,7 @@ class TabInterface(QWidget):
             tex, idx = self._synth_tex, self._alpha_map().get(self._track_idx, 0)
         else:
             sync = self._current_sync()
-            tex, idx = to_alphatex(self._score, part_ids=[track.part_id], sync=sync.bar_starts_ms if sync else None), 0
+            tex, idx = to_alphatex(self._score, part_ids=[track.part_id], sync=sync.alpha_sync if sync else None), 0
         self._js(f"melos.reload({json.dumps(tex)}, {json.dumps(lyrics_for(track))}, {json.dumps(markers_for(track))}, "
                  f"{json.dumps({'track': idx, 'edited': self._edited_bars()})})")
 
@@ -1236,7 +1244,7 @@ class TabInterface(QWidget):
         rbar, off, absolute, playing = resume
         pos = new[rbar] / 1000.0 + off if off is not None and 0 <= rbar < len(new) else absolute
         self._bar_starts = new
-        self._js(f"melos.setSync({json.dumps(new)})")
+        self._js(f"melos.setSync({json.dumps(new)}, {json.dumps(sync.flat_points)})")
         self._video_id, self._video_state, self._seek_target = video_id, None, None
         self._start_at = (max(0.0, pos), playing)
         self.set_status("Audio : " + (sync.title or sync.feature))
@@ -1274,12 +1282,29 @@ class TabInterface(QWidget):
             self._flush()
             return
         sync = self._current_sync()
-        tex = to_alphatex(self._score, part_ids=[track.part_id], sync=sync.bar_starts_ms if sync else None)
+        tex = to_alphatex(self._score, part_ids=[track.part_id], sync=sync.alpha_sync if sync else None)
         self._bar_starts = list(sync.bar_starts_ms) if sync else []
+        self._log_sync(sync)
         self.current_bar = -1
         self._pending = (tex, sync.video_id if sync else "", {"mode": "original"})
         self._synth_loaded = False
         self._flush()
+
+    def _log_sync(self, sync):
+        """Diagnostic (melos_debug.log) : durée des mesures d'après la vidéo comparée à celle de la partition (tempo, signature)."""
+        if sync is None or self._score is None:
+            return
+        try:
+            exp = expected_bar_ms(self._score)
+            st = sync.bar_starts_ms
+            gaps = [b - a for a, b in zip(st, st[1:])]
+            sigs = sorted({tuple(m.signature) for t in self._score.tracks[:1] for m in t.measures})
+            tempos = sorted({round(t.bpm) for t in self._score.tempo})
+            dbg("synchro", f"vidéo {sync.video_id}", f"{len(st)} mesures", f"signatures {sigs}", f"tempos {tempos[:6]}",
+                f"mesure vidéo médiane {median(gaps) / 1000:.2f}s" if gaps else "", f"partition {median(exp) / 1000:.2f}s" if exp else "",
+                "départs", [round(x / 1000, 2) for x in st[:8]])
+        except Exception as exc:                          # un diagnostic ne doit jamais gêner le chargement
+            dbg("synchro : diagnostic impossible", exc)
 
     def _flush(self):
         if not self._pending or not self._page_ready:
@@ -1421,7 +1446,12 @@ class TabInterface(QWidget):
     def _sync_page_theme(self):
         """Thème de la page d'accueil de la partition (avant tout chargement, sinon elle reste blanche en thème sombre)."""
         if self._page_ready and self._view is not None:
-            self._view.page().runJavaScript(f"document.body.classList.toggle('dark', {'true' if isDarkTheme() else 'false'})")
+            c = pal()   # la page de la partition reprend la palette de l'appli (fond, texte, accent, portée)
+            css = {"--bg": c["surface"], "--fg": c["text"], "--muted": c["muted"], "--accent": c["accent"],
+                   "--amber": c["amber"], "--staff": c["staff"], "--thumb": c["border"]}
+            sets = "".join(f"b.style.setProperty('{k}','{v}');" for k, v in css.items())
+            self._view.page().runJavaScript(f"(function(){{var b=document.body;b.classList.toggle('dark', "
+                                            f"{'true' if isDarkTheme() else 'false'});{sets}}})()")
 
     # ---------- page web ----------
     def _js(self, code: str, callback=None):

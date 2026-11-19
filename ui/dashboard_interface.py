@@ -29,13 +29,14 @@ import logging
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
-from qfluentwidgets import SegmentedWidget, TransparentDropDownToolButton, RoundMenu, Action, FluentIcon
+from qfluentwidgets import TransparentDropDownToolButton, RoundMenu, Action, FluentIcon
 
 from settings import load_settings, update_settings
 from state.amp_state import AmpState
 from midi.protocol import PORT_KEYWORD
 from midi.sender import MidiSender
 from ui.module_card import MODULE_COLORS
+from ui.tab_widgets import SegmentedPill
 from ui.preset_panel import PresetPanel
 from ui.tuner_panel import TunerPanel
 from ui.drum_panel import DrumPanel
@@ -72,7 +73,7 @@ class DashboardInterface(QWidget):
         layout.setSpacing(8)
 
         mode_row = QHBoxLayout()
-        self._mode_switcher = SegmentedWidget()
+        self._mode_switcher = SegmentedPill()
         self._mode_switcher.addItem("performance", "Performance", lambda: self._set_mode(False))
         self._mode_switcher.addItem("edit", "Édition", lambda: self._set_mode(True))
         mode_row.addWidget(self._mode_switcher)

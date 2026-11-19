@@ -2,7 +2,9 @@
 instrument de la partition (pour isoler / couper). Le résultat est mémorisé par morceau."""
 
 from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QVBoxLayout
-from qfluentwidgets import BodyLabel, CaptionLabel, ComboBox, PrimaryPushButton, PushButton, isDarkTheme
+from qfluentwidgets import BodyLabel, CaptionLabel, ComboBox, PrimaryPushButton, PushButton
+
+from ui.theme import pal
 
 AUTO, NONE = "__auto__", "__none__"
 
@@ -15,7 +17,7 @@ class StemDialog(QDialog):
         self.setWindowTitle("Association des pistes audio")
         self.setMinimumWidth(620)
         self.setObjectName("stemDialog")
-        self.setStyleSheet("#stemDialog{background:%s}" % ("#272727" if isDarkTheme() else "#f3f3f3"))
+        self.setStyleSheet("#stemDialog{background:%s}" % pal()["surface"])
         lay = QVBoxLayout(self)
         lay.setSpacing(10)
         lay.addWidget(BodyLabel("Quelle piste audio correspond à chaque instrument ?", self))

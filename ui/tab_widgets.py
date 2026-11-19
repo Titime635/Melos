@@ -10,6 +10,8 @@ from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QFrame, QGridLayout, QHBoxLayout, QLineEdit, QSizePolicy, QSlider,
                                QStyle, QVBoxLayout, QWidget)
 
+from qfluentwidgets import qconfig
+
 from ui import tab_icons
 from ui.theme import mix, pal, qc, rgba
 
@@ -188,6 +190,17 @@ class TabButton(QAbstractButton):
             p.drawText(QRectF(x, 0, tw + 2, self.height()), Qt.AlignVCenter | Qt.AlignLeft, shown)
 
 
+class _PillItem:
+    def __init__(self, pill, key: str, text: str):
+        self._pill, self.key, self._text = pill, key, text
+
+    def click(self):
+        self._pill._select(self.key)
+
+    def text(self) -> str:
+        return self._text
+
+
 class SegmentedPill(QWidget):
     """Deux (ou plus) positions côte à côte, la position active teintée. API proche de SegmentedWidget."""
     changed = Signal(str)
@@ -202,8 +215,26 @@ class SegmentedPill(QWidget):
         self.setMouseTracking(True)
         self.setCursor(Qt.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        qconfig.themeChanged.connect(lambda *_: self.update())
 
-    def addItem(self, key: str, text: str, callback=None, icon: str | None = None):
+    @property
+    def items(self) -> dict:
+        """Positions par clé, chacune avec `.click()` et `.text()` (même usage que sur SegmentedWidget de Fluent)."""
+        return {k: _PillItem(self, k, t) for k, t, _ in self._items}
+
+    def _select(self, key: str):
+        if key != self._cur:
+            self._cur = key
+            self.update()
+            cb = self._cbs.get(key)
+            if cb:
+                cb()
+            self.changed.emit(key)
+
+    def addItem(self, key: str | None = None, text: str = "", callback=None, icon: str | None = None, *,
+                routeKey: str | None = None, onClick=None):
+        key = key if key is not None else routeKey            # mêmes noms de paramètres que SegmentedWidget de Fluent
+        callback = callback or onClick
         self._items.append((key, text, icon))
         if callback:
             self._cbs[key] = callback
@@ -219,6 +250,8 @@ class SegmentedPill(QWidget):
 
     def currentItem(self) -> str:
         return self._cur
+
+    currentRouteKey = currentItem                              # même nom que sur SegmentedWidget de Fluent
 
     def _widths(self):
         fm = self.fontMetrics()
@@ -251,14 +284,7 @@ class SegmentedPill(QWidget):
     def mousePressEvent(self, e):
         i = self._index_at(e.position().x())
         if e.button() == Qt.LeftButton and 0 <= i < len(self._items):
-            key = self._items[i][0]
-            if key != self._cur:
-                self._cur = key
-                self.update()
-                cb = self._cbs.get(key)
-                if cb:
-                    cb()
-                self.changed.emit(key)
+            self._select(self._items[i][0])
 
     def paintEvent(self, e):
         p = QPainter(self)

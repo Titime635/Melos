@@ -183,6 +183,15 @@ class EditBar(QFrame):
         self.dot.setChecked(dots > 0)
 
 
+def numlock_on() -> bool:
+    """État réel du verrouillage numérique (Windows) ; ailleurs on suppose qu'il est actif."""
+    try:
+        import ctypes
+        return bool(ctypes.windll.user32.GetKeyState(0x90) & 1)
+    except (AttributeError, OSError, ImportError):
+        return True
+
+
 class EditController(QObject):
     """Sélection, touches et actions d'édition. `ti` = la page Partition (TabInterface)."""
 
@@ -576,6 +585,8 @@ class EditController(QObject):
             return
         k, shift = d.get("key", ""), bool(d.get("shift"))
         ctrl = bool(d.get("ctrl"))
+        if d.get("pad") and numlock_on():                  # touche du pavé : chiffre si le verrouillage numérique est actif, sinon flèche / Suppr
+            k = d["pad"]
         if k == "Escape":
             self.sel = None
             self.refresh()

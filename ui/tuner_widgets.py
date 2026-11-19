@@ -6,10 +6,12 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QAbstractButton, QApplication, QSizePolicy, QWidget
 
+from ui.module_card import notify_power
 from ui.power_pill import text_color
+from ui.theme import ON_SOFT, STATE_COLORS, accent_fg, qc
 
-GREEN = QColor("#2ecc71")
-WARM = QColor("#f2994a")
+GREEN = QColor(STATE_COLORS["ok"])
+WARM = QColor(STATE_COLORS["warn"])
 SPAN_DEG = 60.0          # l'arc va de -60° à +60° autour de la verticale
 RANGE_CENTS = 50.0
 
@@ -56,17 +58,26 @@ class ForkToggle(QAbstractButton):
         self.setCursor(Qt.PointingHandCursor)
         self.setFixedSize(44, 24)
         self.setToolTip("Activer / couper l'accordeur")
+        self.toggled.connect(lambda on: notify_power(self, on))
+
+    def setChecked(self, on: bool):
+        super().setChecked(on)
+        notify_power(self, self.isChecked())
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        notify_power(self, self.isChecked())
 
     def paintEvent(self, _e):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         on = self.isChecked()
-        if on:
-            p.setPen(Qt.NoPen); p.setBrush(self._accent); fg = QColor("#1b1b1b")
+        if on:       # actif : pastille pleine à la couleur du module
+            acc = QColor(self._accent)
+            p.setPen(QPen(acc, 1)); p.setBrush(acc.lighter(108) if self.underMouse() else acc); fg = QColor(ON_SOFT)
         else:
-            border = text_color(); border.setAlpha(120 if not self.underMouse() else 200)
-            p.setPen(QPen(border, 1)); p.setBrush(Qt.NoBrush); fg = _faint(190)
+            p.setPen(QPen(qc("border").lighter(135), 1)); p.setBrush(qc("hover" if self.underMouse() else "raised")); fg = qc("muted")
         p.drawRoundedRect(r, r.height() / 2, r.height() / 2)
         draw_fork(p, QRectF(r.center().x() - 9, r.center().y() - 9, 18, 18), fg)
         p.end()
@@ -246,7 +257,7 @@ class StringChip(QAbstractButton):
         if self.tuned:
             fill = QColor(GREEN); fill.setAlpha(60); edge = QColor(GREEN); fg = text_color()
         elif self.selected:
-            fill = QColor(self._accent); fill.setAlpha(210); edge = QColor(self._accent); fg = QColor("#1b1b1b")
+            fill = QColor(self._accent); fill.setAlpha(210); edge = QColor(self._accent); fg = QColor(ON_SOFT)
         elif self.auto:
             fill = QColor(self._accent); fill.setAlpha(45); edge = QColor(self._accent); fg = text_color()
         else:
